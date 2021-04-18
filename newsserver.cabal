@@ -4,16 +4,16 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e7c31ad36f15c868df877e75e2b9f87493c29ed92fd84d7d95e6d20f4469d94b
+-- hash: 4c80f18c47412f9db17b28f88a224ed47d3267bffafb58d1209999d0c81e9c85
 
 name:           newsserver
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/githubuser/newsserver#readme>
-homepage:       https://github.com/githubuser/newsserver#readme
-bug-reports:    https://github.com/githubuser/newsserver/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2021 Author name here
+homepage:       https://github.com/DenDragonB/newsserver#readme
+bug-reports:    https://github.com/DenDragonB/newsserver/issues
+author:         DenDragonB
+maintainer:     DenDragon@mail.ru
+copyright:      2021 DenDragonB
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -23,17 +23,27 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/newsserver
+  location: https://github.com/DenDragonB/newsserver
 
 library
   exposed-modules:
+      DataBase
       Lib
+      Logger
+      Web
   other-modules:
       Paths_newsserver
   hs-source-dirs:
       src
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
+    , htoml
+    , mtl
+    , postgresql-simple
+    , resource-pool
+    , text
+    , time
   default-language: Haskell2010
 
 executable newsserver-exe
@@ -44,8 +54,15 @@ executable newsserver-exe
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
+    , htoml
+    , mtl
     , newsserver
+    , postgresql-simple
+    , resource-pool
+    , text
+    , time
   default-language: Haskell2010
 
 test-suite newsserver-test
@@ -57,6 +74,13 @@ test-suite newsserver-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
+    , htoml
+    , mtl
     , newsserver
+    , postgresql-simple
+    , resource-pool
+    , text
+    , time
   default-language: Haskell2010

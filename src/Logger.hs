@@ -50,8 +50,7 @@ data Config = Config
     { logTo   :: LogTo
     , logPath :: IO.FilePath
     , logMinLevel :: LogLevel
-    }
-    deriving (Show,Eq)
+    } deriving (Show,Eq)
 instance A.FromJSON Config where
     parseJSON = A.withObject "FromJSON Logger.Config" $ \o -> 
         Config <$> o A..: "logTo"
