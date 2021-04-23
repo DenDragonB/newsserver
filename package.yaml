@@ -22,12 +22,17 @@ description:         Please see the README on GitHub at <https://github.com/gith
 dependencies:
 - base >= 4.7 && < 5
 - mtl
+- bytestring
 - aeson
 - time
 - text
 - htoml
 - postgresql-simple
 - resource-pool
+- utf8-string
+- wai
+- warp
+- http-types
 
 library:
   source-dirs: src

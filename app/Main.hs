@@ -8,16 +8,20 @@ import qualified Text.Toml as TOML
 
 import qualified Logger
 import qualified DataBase
+import qualified Web
 
 
 data Config = Config
     { logConfig :: Logger.Config
     , dbConfig  :: DataBase.Config
+    , webConfig :: Web.Config
     } deriving (Show,Eq)
 instance Aeson.FromJSON Config where
     parseJSON = Aeson.withObject "FromJSON Main.Config" $ \o -> 
         Config  <$> o Aeson..: "logger"   
                 <*> o Aeson..: "database"
+                <*> o Aeson..: "server"
+
 
 main :: IO ()
 main = do
@@ -30,4 +34,4 @@ main = do
             let conf = Aeson.eitherDecode $ Aeson.encode t :: Either String Config
             case conf of
                 Left err -> fail err
-                Right config -> print config
+                Right config -> Web.start $ Web.Env (webConfig config) (logConfig config) (dbConfig config)
