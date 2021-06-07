@@ -10,19 +10,22 @@ import           Database.PostgreSQL.Simple.Types
 import           Control.Monad.Reader (when)
 import           Data.List (sort,isSuffixOf)
 
-import           DataBase  
+import           DataBase
+import           Logger 
 
 migrateDB :: DBPool -> IO ()
 migrateDB pool = do
-    Just v <- versionDB pool 
-    files <- listDirectory "src/DataBase"
+    Just v <- versionDB pool
+    let sqlDir = "src/DataBase/sql/"
+    files <- listDirectory sqlDir
     let fs = filter (isSuffixOf ".sql") files
-    mapM_ (\f -> when (f > v) $ migrateFile pool $ "src/DataBase/" <> f) $ sort fs
+    mapM_ (\f -> when (f > v <> ".sql") $ migrateFile pool $ sqlDir <> f) $ sort fs
 
 migrateFile :: DBPool -> FilePath -> IO ()
 migrateFile pool file = do
     IO.withFile file IO.ReadMode $
         \ hdl -> do
+            putStrLn file
             ups <- BS.hGetContents hdl
             _ <- execDB pool $ Query ups
             return ()
@@ -38,4 +41,5 @@ versionDB pool = do
         _  -> do
             [v] <- queryDB pool $
                 "SELECT MAX (FileNumber) FROM MigrationHistory" :: IO [Only String]
+            putStrLn $ fromOnly v
             return $ ( Just . fromOnly) v

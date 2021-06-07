@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9d84c13e3b9c31c5167476c886f6afdf497a997f54236dbad671a84dab129fb3
+-- hash: b3793e54e503c07d5ef43b285a514afa48c3a1d5a03f67f79b74d906db7d7e8a
 
 name:           newsserver
 version:        0.1.0.0
@@ -28,6 +28,14 @@ source-repository head
 library
   exposed-modules:
       DataBase
+      DataBase.Authors
+      DataBase.Categories
+      DataBase.Drafts
+      DataBase.Migration
+      DataBase.Posts
+      DataBase.Tags
+      DataBase.Users
+      Exceptions
       Lib
       Logger
       Web
@@ -38,7 +46,9 @@ library
   build-depends:
       aeson
     , base >=4.7 && <5
+    , bcrypt
     , bytestring
+    , directory
     , htoml
     , http-types
     , mtl
@@ -46,6 +56,7 @@ library
     , resource-pool
     , text
     , time
+    , transformers
     , utf8-string
     , wai
     , warp
@@ -61,7 +72,9 @@ executable newsserver-exe
   build-depends:
       aeson
     , base >=4.7 && <5
+    , bcrypt
     , bytestring
+    , directory
     , htoml
     , http-types
     , mtl
@@ -70,6 +83,7 @@ executable newsserver-exe
     , resource-pool
     , text
     , time
+    , transformers
     , utf8-string
     , wai
     , warp
@@ -86,7 +100,9 @@ test-suite newsserver-test
   build-depends:
       aeson
     , base >=4.7 && <5
+    , bcrypt
     , bytestring
+    , directory
     , htoml
     , http-types
     , mtl
@@ -95,6 +111,7 @@ test-suite newsserver-test
     , resource-pool
     , text
     , time
+    , transformers
     , utf8-string
     , wai
     , warp

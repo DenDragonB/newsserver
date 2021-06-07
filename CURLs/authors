@@ -1,0 +1,4 @@
+http://localhost:8080/author.add?token=admin&user_id=11&about=Thisisbestauthor
+http://localhost:8080/author.edit?token=admin&id=&user_id=5&about=Edit_Author
+http://localhost:8080/author.get?token=admin&user_id=11
+http://localhost:8080/author.delete?token=admin&id=2

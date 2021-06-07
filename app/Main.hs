@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Main where
 
@@ -34,4 +35,7 @@ main = do
             let conf = Aeson.eitherDecode $ Aeson.encode t :: Either String Config
             case conf of
                 Left err -> fail err
-                Right config -> Web.start $ Web.Env (webConfig config) (logConfig config) (dbConfig config)
+                Right Config {..} -> do
+                    pool <- DataBase.openPool dbConfig
+                    Web.start $ Web.Env webConfig logConfig pool
+                -- Right Config {..} -> Web.webRun Web.start' $ Web.Env webConfig logConfig dbConfig

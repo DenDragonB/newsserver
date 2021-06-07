@@ -52,15 +52,15 @@ tagAdd param = do
                 Just name -> do
                     let pool = dbConn env
                     isTag <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = " <> name <> ");"  
+                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = '" <> name <> "');"  
                     when (fromOnly $ head isTag) (throwError ObjectExists)
                     _ <- liftIO $ execDB pool $ Query $
                         "INSERT INTO Tags (Tag) VALUES" 
-                        <> "(" <> name <> ");"
+                        <> "('" <> name <> "');"
                     liftIO $ Logger.info (Logger.lConfig env) $ 
                         "Add Tag: " <> BS.toString name
                     tag <- liftIO $ queryDB pool $ Query $
-                        "SELECT * FROM Tags WHERE Tag = " <> name <> ");"
+                        "SELECT * FROM Tags WHERE Tag = '" <> name <> "';"
                     return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 
@@ -86,7 +86,7 @@ tagEdit param = do
                     isTag <- liftIO $ queryDB pool $ Query $
                         "SELECT EXISTS (SELECT id FROM Tags WHERE Id = " <> tid <> ");"
                     isTagName <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = " <> tname <> ");" 
+                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = '" <> tname <> "');" 
                     unless (fromOnly $ head isTag) (throwError ObjectNOTExists)
                     when (fromOnly $ head isTagName) (throwError ObjectExists)
                     _ <- liftIO $ execDB pool $ Query $
@@ -96,7 +96,7 @@ tagEdit param = do
                     liftIO $ Logger.info (Logger.lConfig env) $ 
                         "Edit Tag id: " <> BS.toString tid
                     tag <- liftIO $ queryDB pool $ Query $
-                        "SELECT * FROM Tags WHERE Id = " <> tid <> ");"
+                        "SELECT * FROM Tags WHERE Id = " <> tid <> ";"
                     return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 
@@ -118,7 +118,7 @@ tagGet param = do
             let tname = fromMaybe "" $ getParam "name" param
             tag <- liftIO $ queryDB pool $ Query $
                 "SELECT * FROM Tags WHERE Id > 0 "
-                <> addFieldToQueryBS "Id" tid 
+                <> addFieldToQueryNumBS "Id" tid 
                 <> addFieldToQueryBS "Tag" tname
                 <> getLimitOffsetBS param
                 <> ";"

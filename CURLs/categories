@@ -1,0 +1,4 @@
+http://localhost:8080/category.add?token=admin&name=Computers
+http://localhost:8080/category.edit?token=admin&id=2&parent=1
+http://localhost:8080/category.get?token=user&id=1
+http://localhost:8080/category.delete?token=admin&id=2

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 module DataBase.Authors where
 
-import           Database.PostgreSQL.Simple
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
@@ -12,9 +11,8 @@ import           Control.Monad.Except
 import qualified Data.Aeson as A
 import qualified Data.ByteString.UTF8 as BS
 import           Data.Text ( Text )
-import           Data.Time
-import           Data.Maybe
-import           Crypto.BCrypt
+import           Data.Text.Encoding (decodeUtf8)
+import           Data.Maybe (fromMaybe)
 
 import           DataBase
 import           DataBase.Users
@@ -47,47 +45,35 @@ authorAdd ::
     ) => [( BS.ByteString , Maybe BS.ByteString )]
     -> m A.Value
 authorAdd param = do
-    admin <- findToken param
-    case admin of
-        Just (_,True ) -> do
-            case getParam "id" param of
-                Nothing -> throwError WrongQueryParameter
-                Just uid -> do
-                    env <- ask
-                    let pool = dbConn env
-                    _ <- liftIO $ execDB pool $ Query $
-                        "DELETE FROM Users WHERE id = " <> uid
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
-                        "Delete user id: " <> BS.toString uid
-                    return $ A.String "Delete user"
-        _ -> throwError NotFound
-    
-    let user = parseUser param
     env <- ask
-    let pool = dbConn env
-    oldUser <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-                "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '"
-                <> userName user
-                <> "')"
-    case fromOnly (head oldUser) of
-        True  -> throwError UserExists
-        False -> do
-            let us = user {token = (BS.toString . makeHash . BS.fromString) $ 
-                userName user <> upass user} 
-            _ <- liftIO $ execDB pool $ (Query . BS.fromString) $
-                "INSERT INTO Users "
-                <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
-                <> "VALUES ("
-                <> valUser user <> ", NOW ());"
-            u <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-                "SELECT * FROM Users WHERE id>0 " 
-                <> addFieldToQuery "UserName" (userName user)
-                <> addFieldToQuery "FirstName" (firstName user)
-                <> addFieldToQuery "LastName" (lastName user)
-            liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
-            return $ A.toJSON (u :: [User])
+    admin <- findToken param
+    liftIO $ Logger.debug (Logger.lConfig env) $ 
+        "Just (User,Admin): " <> show admin
+    case admin of
+        Just (_, True ) -> do
+            let muid = getParam "user_id" param
+            let mabout = getParam "about" param
+            case sequence [muid,mabout] of
+                Nothing -> throwError WrongQueryParameter
+                Just [uid,about] -> do
+                    let pool = dbConn env
+                    isUser <- liftIO $ queryDB pool $ Query $
+                        "SELECT EXISTS (SELECT id FROM Users WHERE id = " <> uid <> ");"
+                    unless (fromOnly $ head isUser) (throwError UserNOTExists)   
+                    isAuthor <- liftIO $ queryDB pool $ Query $
+                        "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = " <> uid <> ");"
+                    when (fromOnly $ head isAuthor) (throwError ObjectExists)
+                    _ <- liftIO $ execDB pool $ Query $
+                        "INSERT INTO Authors (UserId, About) VALUES" 
+                        <> "(" <> uid <> ",'" <> about <> "');"
+                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                        "Add author with user id: " <> BS.toString uid
+                    author <- liftIO $ queryDB pool $ Query $
+                        "SELECT * FROM Authors WHERE UserId = " <> uid <> ";"
+                    return $ A.toJSON (author :: [Author])
+        _ -> throwError NotFound
 
-userGet :: 
+authorEdit :: 
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -95,43 +81,82 @@ userGet ::
     , MonadIO m
     ) => [( BS.ByteString , Maybe BS.ByteString )]
     -> m A.Value
-userGet param = do
-    token <- findToken param
-    if isNothing token
-        then throwError NotFound
-        else do
-            env <- ask
-            let user = parseUser param
-            let pool = dbConn env
-            u <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-                "SELECT * FROM Users WHERE id>0 " 
-                <> addFieldToQuery "UserName" (userName user)
-                <> addFieldToQuery "FirstName" (firstName user)
-                <> addFieldToQuery "LastName" (lastName user)
-                <> " ORDER BY UserName"
-                <> getLimitOffset param
-            return $ A.toJSON (u :: [User])
-
-userDel :: 
-    ( MonadReader env m
-    , HasDataBase env
-    , HasLogger env
-    , MonadError Errors m
-    , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
-    -> m A.Value
-userDel param = do
+authorEdit param = do
+    env <- ask
     admin <- findToken param
     case admin of
-        Just (_,True ) -> do
-            case getParam "id" param of
+        Just (_, True ) -> do
+            let uid = fromMaybe "" $ getParam "user_id" param
+            let about = fromMaybe "" $ getParam "about" param
+            let maid = getParam "id" param
+            case maid of
                 Nothing -> throwError WrongQueryParameter
-                Just uid -> do
-                    env <- ask
+                Just aid -> do
                     let pool = dbConn env
+                    isAuthor <- liftIO $ queryDB pool $ Query $
+                        "SELECT EXISTS (SELECT id FROM Authors WHERE Id = " <> aid <> ");"
+                    unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)
                     _ <- liftIO $ execDB pool $ Query $
-                        "DELETE FROM Users WHERE id = " <> uid
+                        "UPDATE Authors SET Id = " <> aid
+                        <> addToUpdate "UserId" uid
+                        <> addToUpdate "About" about 
+                        <> " WHERE Id = " <> aid <> ";"
                     liftIO $ Logger.info (Logger.lConfig env) $ 
-                        "Delete user id: " <> BS.toString uid
-                    return $ A.String "Delete user"
+                        "Edit author id: " <> BS.toString aid
+                    author <- liftIO $ queryDB pool $ Query $
+                        "SELECT * FROM Authors WHERE Id = " <> aid <> ";"
+                    return $ A.toJSON (author :: [Author])
+        _ -> throwError NotFound
+
+authorGet :: 
+    ( MonadReader env m
+    , HasDataBase env
+    , HasLogger env
+    , MonadError Errors m
+    , MonadIO m
+    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    -> m A.Value
+authorGet param = do
+    env <- ask
+    admin <- findToken param
+    case admin of
+        Just (_, True ) -> do
+            let pool = dbConn env
+            let uid = fromMaybe "" $ getParam "user_id" param
+            let aid = fromMaybe "" $ getParam "id" param
+            author <- liftIO $ queryDB pool $ Query $
+                "SELECT * FROM Authors WHERE Id > 0 "
+                <> addFieldToQueryNumBS "Id" aid 
+                <> addFieldToQueryNumBS "UserId" uid
+                <> getLimitOffsetBS param
+                <> ";"
+            return $ A.toJSON (author :: [Author])
+        _ -> throwError NotFound
+
+authorDelete :: 
+    ( MonadReader env m
+    , HasDataBase env
+    , HasLogger env
+    , MonadError Errors m
+    , MonadIO m
+    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    -> m A.Value
+authorDelete param = do
+    env <- ask
+    admin <- findToken param
+    case admin of
+        Just (_, True ) -> do
+            let maid = getParam "id" param
+            case maid of
+                Nothing -> throwError WrongQueryParameter
+                Just aid -> do
+                    let pool = dbConn env
+                    isAuthor <- liftIO $ queryDB pool $ Query $
+                        "SELECT EXISTS (SELECT id FROM Authors WHERE Id = " <> aid <> ");"
+                    unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)
+                    _ <- liftIO $ execDB pool $ Query $
+                        "DELETE FROM Authors WHERE Id = "<> aid <> ";"
+                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                        "Delete author id: " <> BS.toString aid
+                    return $ A.String $ decodeUtf8 $ "Author with id "<>aid<>" deleted"
         _ -> throwError NotFound

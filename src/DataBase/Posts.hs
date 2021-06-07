@@ -26,9 +26,9 @@ data News = News
     { nid :: Int
     , header :: Text
     , newsDate :: Day
-    , autorId :: Int
-    , catId :: Int
-    , tags :: PGArray Int
+    , authorName :: Text
+    , catName :: Text
+    , tags :: PGArray Text
     , content :: Text
     , mainPhoto :: Text
     , photos :: PGArray Text
@@ -38,9 +38,9 @@ instance A.ToJSON News where
         [ "id"          A..= nid news
         , "header"      A..= header news
         , "reg_date"    A..= newsDate news
-        , "author_id"   A..= autorId news
-        , "category_id" A..= catId news
-        , "tags_id"     A..= fromPGArray (tags news)
+        , "author"   A..= authorName news
+        , "category" A..= catName news
+        , "tags"     A..= fromPGArray (tags news)
         , "content"     A..= content news
         , "main_photo"  A..= mainPhoto news
         , "photos"      A..= fromPGArray (photos news)
@@ -71,14 +71,46 @@ postGet param = do
     case sequence [mtoken] of
         Just [token] -> do
             let pool = dbConn env
+            let nsort = fromMaybe "" $ getParam "sort_by" param
             let nid = fromMaybe "" $ getParam "id" param
             let ndate = fromMaybe "" $ getParam "created_at" param
-            let author = fromMaybe "" $ getParam "author" param
+            let ndateLT = fromMaybe "" $ getParam "created_at__lt" param
+            let ndateGT = fromMaybe "" $ getParam "created_at__gt" param
+            let nauthor = fromMaybe "" $ getParam "author" param
+            let ntag = fromMaybe "" $ getParam "tag" param
+            let ntagAll = fromMaybe "" $ getParam "tags__all" param
+            let ntagIn = fromMaybe "" $ getParam "tags__in" param
+            let nheader = fromMaybe "" $ getParam "header" param
+            let ncont = fromMaybe "" $ getParam "content" param
             news <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM News WHERE Id > 0 " 
-                <> addToUpdateNum "Id" nid 
-                <> addToUpdateNum "RegDate" ndate 
-                <> addAuthorByName author
+                "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag), "
+                <> "n.Content, n.MainPhoto, n.Photos  FROM News n "
+                -- Add Name of Author
+                <> " LEFT OUTER JOIN (Authors a JOIN Users u on a.userid = u.id)"
+                <> " ON n.Author = a.id "  
+                -- Add name of Category
+                <> " LEFT OUTER JOIN Categories c ON n.Category = c.id "
+                -- Add names of Tags
+                <> "LEFT JOIN Tags t ON t.id = ANY(n.tags) "
+                <> " WHERE n.Id > 0 " 
+                -- Add selection
+                <> addFieldToQueryNumBS "n.Id" nid 
+                <> addFieldToQueryBS "n.RegDate" ndate 
+                <> addFieldToQueryLaterBS "n.RegDate" ndateLT
+                <> addFieldToQueryGraterBS "n.RegDate" ndateGT
+                <> addAuthorByName nauthor
+                <> addTag ntag
+                <> addTagsAny ntagIn 
+                <> addTagsAll ntagAll
+                <> addFindTextToSelectBS "n.Header" nheader 
+                <> addFindTextToSelectBS "n.Content" ncont
+                -- group elements to correct work array_agg(tag)
+                <> "GROUP BY n.Id, n.Header, n.RegDate, u.UserName, c.CatName, "
+                <> "n.Content, n.MainPhoto, n.Photos "
+                -- Add sorting
+                <> addSortBy nsort
+                -- Add pagination
+                <> getLimitOffsetBS param
                 <> ";"
             return $ A.toJSON (news :: [News])
         _ -> throwError NotFound
@@ -86,6 +118,27 @@ postGet param = do
 addAuthorByName :: BS.ByteString -> BS.ByteString
 addAuthorByName val = if val == ""
     then ""
-    else ", Author = (SELECT Id FROM Authors WHERE "
-        <> "UserId = (SELECT Id FROM Users WHERE UserName = "
-        <> val <> "))" 
+    else " AND strpos(u.UserName,'" <> val <> "')>0 " 
+
+addTag :: BS.ByteString -> BS.ByteString
+addTag tag = if tag == ""
+    then ""
+    else " AND Tags && ARRAY [" <> tag <> "]" 
+
+addTagsAny :: BS.ByteString -> BS.ByteString
+addTagsAny tags = if tags == ""
+    then ""
+    else " AND Tags && ARRAY" <> tags 
+
+addTagsAll :: BS.ByteString -> BS.ByteString
+addTagsAll tags = if tags == ""
+    then ""
+    else " AND ARRAY" <> tags <> " <@ Tags "
+
+addSortBy :: BS.ByteString -> BS.ByteString
+addSortBy val = case val of
+    "author" -> " ORDER BY u.UserName "
+    "date" -> " ORDER BY n.RegDate "
+    "category" -> " ORDER BY c.CatName "
+    "photos" -> " ORDER BY array_length (n.Photos,1) "
+    _ -> ""

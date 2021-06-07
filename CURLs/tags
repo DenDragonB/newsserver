@@ -1,0 +1,4 @@
+http://localhost:8080/tag.add?token=admin&name=Computer
+http://localhost:8080/tag.get?token=admin
+http://localhost:8080/tag.delete?token=admin&id=4
+http://localhost:8080/tag.edit?token=admin&id=5&name=Computer

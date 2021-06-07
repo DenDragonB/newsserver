@@ -9,6 +9,11 @@ import qualified Data.Aeson as A
 import qualified Data.Text as T
 import           Data.Time.Clock 
 
+import           Control.Monad.Reader
+
+class HasLogger env where
+    lConfig :: env -> Config
+
 class Monad m => MonadLog m where
     debug   :: Config -> String -> m ()
     info    :: Config -> String -> m ()
@@ -19,6 +24,12 @@ instance MonadLog IO where
     info    c = log c Info
     warning c = log c Warning
     error   c = log c Error
+instance MonadIO m => MonadLog (ReaderT r m) where 
+    debug   c str = liftIO $ log c Debug str
+    info    c = liftIO . log c Info
+    warning c = liftIO . log c Warning
+    error   c = liftIO . log c Error
+
 
 data LogLevel 
     = Debug

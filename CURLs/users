@@ -1,0 +1,3 @@
+http://localhost:8080/user.add?id=123&last_name=Bychkov&first_name=Denis&name=DenDragon&avatar=dragon.jpg
+http://localhost:8080/user.get?last_name=Bychkov&limit=2&page=2
+http://localhost:8080/user.delete?token=admin&id=7

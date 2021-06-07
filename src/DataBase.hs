@@ -6,12 +6,20 @@
 module DataBase where
 
 import qualified Data.Aeson as A
+
 import           Database.PostgreSQL.Simple
+import           Database.PostgreSQL.Simple.Types
+import qualified Data.ByteString.UTF8 as BS
+import           Data.Maybe
+import           Data.List
 import           Data.Pool
 import           Control.Monad.Reader
 import           Data.Int
 
 import qualified Logger
+
+import Data.Text.IO as TIO
+import Data.Text.Encoding
 
 data Config = Config
     { host :: String
@@ -34,7 +42,7 @@ class HasDataBase env where
     dbConn :: env -> DBPool
 
 class Monad m => MyDatabase m where
-    openPool :: Config -> m (Pool Connection)
+    openPool :: Config -> m DBPool
     queryDB  :: FromRow r => DBPool -> Query -> m [r]
     execDB   :: DBPool -> Query -> m Int64
 instance MyDatabase IO where
@@ -55,9 +63,92 @@ instance MyDatabase IO where
     queryDB pool q = withResource pool $ \conn -> query_ conn q
     execDB pool q = withResource pool $ \conn -> execute_ conn q
 
+getLimitOffset :: [( BS.ByteString , Maybe BS.ByteString )] -> String
+getLimitOffset param = limit <> offset
+    where
+        func :: BS.ByteString -> ( BS.ByteString , Maybe BS.ByteString ) -> Int -> Int
+        func name (pn,pe) ini = if pn /= name then ini
+            else  read $ BS.toString $ fromMaybe ("0" :: BS.ByteString) pe
+        l = (read . BS.toString . fromMaybe "0" . getParam "limit") param
+        p = (read . BS.toString . fromMaybe "0" . getParam "page") param
+        limit = if l <= 0 then ""
+            else " LIMIT " <> show l
+        offset = if p <= 0 then ""
+            else " OFFSET " <> show (l*(p-1))
 
-q :: Query
-q = "CREATE TABLE users ("
-    <> "id INT PRIMARY KEY NOT NULL,"
-    <> "name TEXT NOT NULL"
-    <> ");"
+getLimitOffsetBS :: [( BS.ByteString , Maybe BS.ByteString )] -> BS.ByteString
+getLimitOffsetBS param = limit <> offset
+    where
+        func :: BS.ByteString -> ( BS.ByteString , Maybe BS.ByteString ) -> Int -> Int
+        func name (pn,pe) ini = if pn /= name then ini
+            else  read $ BS.toString $ fromMaybe ("0" :: BS.ByteString) pe
+        l = (read . BS.toString . fromMaybe "0" . getParam "limit") param
+        p = (read . BS.toString . fromMaybe "0" . getParam "page") param
+        limit = if l <= 0 then (""  :: BS.ByteString)
+            else BS.fromString $ " LIMIT "  <> show l
+        offset = if p <= 0 then ("" :: BS.ByteString)
+            else BS.fromString $ " OFFSET " <> show (l*(p-1))
+
+getParam :: BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> Maybe BS.ByteString 
+getParam name = foldr (func name) Nothing
+    where
+        func name (pn,pe) ini = if pn /= name 
+            then ini
+            else pe
+
+addFieldToQuery :: String -> String -> String
+addFieldToQuery field val = if null val
+    then ""
+    else " AND " <> field <> " = '" <> val <> "'"
+
+addFieldToQueryBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addFieldToQueryBS field val = if val == ""
+    then ""
+    else " AND " <> field <> " = '" <> val <> "'"
+
+addFieldToQueryNumBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addFieldToQueryNumBS field val = if val == ""
+    then ""
+    else " AND " <> field <> " = " <> val
+
+addFieldToQueryLaterBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addFieldToQueryLaterBS field val = if val == ""
+    then ""
+    else " AND " <> field <> " < '" <> val <> "'"
+
+addFieldToQueryGraterBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addFieldToQueryGraterBS field val = if val == ""
+    then ""
+    else " AND " <> field <> " > '" <> val <> "'"
+
+addFindTextToSelectBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addFindTextToSelectBS field val = if val == ""
+    then ""
+    else " AND strpos("<> field <> ",'" <> val <> "') > 0"
+
+addToUpdate :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addToUpdate field val = if val == ""
+    then ""
+    else ", " <> field <> " = '" <> val <> "'"
+
+addToUpdateNum :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addToUpdateNum field val = if val == ""
+    then ""
+    else ", " <> field <> " = " <> val
+
+addToUpdateNumArray :: BS.ByteString -> BS.ByteString -> BS.ByteString
+addToUpdateNumArray field val = if val == ""
+    then ""
+    else ", " <> field <> " = ARRAY" <> val
+
+addToUpdateNumArrayMap :: BS.ByteString -> [BS.ByteString] -> BS.ByteString
+addToUpdateNumArrayMap field vals = if null vals 
+    then ""
+    else ", " <> field <> 
+        " = ARRAY[" <> (BS.drop 1 . foldr (\v ini -> ini<>","<>v) "") vals <> "]"
+
+addToUpdateArrayMap :: BS.ByteString -> [BS.ByteString] -> BS.ByteString
+addToUpdateArrayMap field vals = if null vals 
+    then ""
+    else ", " <> field <> 
+        " = ARRAY[" <> (BS.drop 1 . foldr (\v ini -> ini<>",'"<>v<>"'") "") vals <> "]"
