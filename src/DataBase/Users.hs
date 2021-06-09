@@ -200,3 +200,38 @@ userDel param = do
                         "Delete user id: " <> BS.toString uid
                     return $ A.String $ decodeUtf8 $ "User with id "<>uid<>" deleted"
         _ -> throwError NotFound
+
+userNewPass :: 
+    ( MonadReader env m
+    , HasDataBase env
+    , HasLogger env
+    , MonadError Errors m
+    , MonadIO m
+    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    -> m A.Value
+userNewPass param = do
+    env <- ask
+    let mUserName = getParam "name" param
+    let mPass = getParam "pass" param
+    let mNewPass = getParam "new_pass" param
+    case sequence [mUserName,mPass,mNewPass] of
+        Just [uName,uPass,uNewPass] -> do
+            let pool = dbConn env
+            isUser <- liftIO $ queryDB pool $ Query $
+                "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '" <> uName <> "');"
+            unless (fromOnly $ head isUser) (throwError UserNOTExists)
+            isPass <- liftIO $ queryDB pool $ Query $
+                "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '"
+                <> uName <> "' AND Pass = md5('" <> uPass <> "'));"
+            unless (fromOnly $ head isPass) (throwError WrongPass)            
+            _ <- liftIO $ execDB pool $ Query $
+                "UPDATE Users SET "
+                <> "Pass = md5('" <> uNewPass <> "') "
+                <> ", Token = md5('" <> makeHash (uName <> uNewPass) <> "') "
+                <> "WHERE UserName = '" <> uName <> "';"
+            u <- liftIO $ queryDB pool $ Query $
+                "SELECT * FROM Users WHERE UserName = '" <> uName <> "';"
+            liftIO $ Logger.info (Logger.lConfig env) $ BS.toString $
+                "Change password for user: " <> uName 
+            return $ A.toJSON (u :: [User])
+        _ -> throwError NotFound

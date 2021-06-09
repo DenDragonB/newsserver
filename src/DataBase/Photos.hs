@@ -5,14 +5,8 @@ module DataBase.Photos where
 import           Control.Monad.Reader
 import           Control.Monad.Except
 import qualified Data.Aeson as A
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Text ( Text )
-import           Data.Text.Encoding (decodeUtf8,encodeUtf8)
-import           Data.Maybe (fromMaybe)
-import           Data.Time
+import qualified System.Directory as IO
 
-import           DataBase
-import           DataBase.Users
 import           Exceptions
 import           Logger
 
@@ -21,8 +15,17 @@ fileGet ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => BS.ByteString
+    ) => String
     -> m A.Value
-fileGet param = do
+fileGet fileName = do
     env <- ask
-    throwError $ Send "param"
+    isFile <- liftIO $ IO.doesFileExist fileName
+    if isFile 
+        then do 
+            liftIO $ Logger.debug (Logger.lConfig env) $
+                "File " <> fileName <> " will be send"
+            throwError $ Send fileName
+        else do
+            liftIO $ Logger.debug (Logger.lConfig env) $
+                "File " <> fileName <> " not found"
+            throwError NotFound

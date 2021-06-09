@@ -11,7 +11,6 @@ import qualified Data.Aeson.Encoding.Internal as A
 import qualified Data.ByteString.UTF8 as BS
 import qualified Data.ByteString.Lazy.UTF8 as BSLazy
 import           Data.Word
-
 import           Control.Monad.Reader
 import           Control.Monad.Except
 
@@ -25,6 +24,7 @@ import qualified DataBase.Categories as DataBase
 import qualified DataBase.Tags as DataBase
 import qualified DataBase.Drafts as DataBase
 import qualified DataBase.Posts as DataBase
+import qualified DataBase.Photos as DataBase
 
 data Config = Config
     { port :: Int 
@@ -32,8 +32,6 @@ data Config = Config
 instance A.FromJSON Config where
     parseJSON = A.withObject "FromJSON Web.Config" $ \o -> 
         Config <$> o A..: "port"
---               <*> o A..: "logPath" 
---               <*> o A..: "logMinLevel" 
 
 data Environment = Env
     Config
@@ -70,6 +68,7 @@ app env request respond = do
     resp <- runAnswear env request
     respond $ case resp of
         Right js -> sendText js
+        Left (Send file) -> sendFile file
         Left err -> sendError err
 
 sendError :: Errors -> Response
@@ -84,6 +83,13 @@ sendText js = responseLBS
     [("Content-Type", "text/plain")]
     $ A.encodingToLazyByteString $ A.pairs ("result" A..= ("Ok" :: String) <> "object" A..= js)
 
+sendFile :: String -> Response
+sendFile name = responseFile
+    status200
+    [("Content-Type", "text/plain")]
+    name
+    Nothing
+
 type Answear = ReaderT Environment (ExceptT Errors IO) A.Value
 
 runAnswear :: Environment -> Request -> IO (Either Errors A.Value)
@@ -91,9 +97,9 @@ runAnswear env req = runExceptT $ runReaderT (answear req) env
 
 answear :: Request -> Answear
 answear request = do
-    let (entity,pstr) = BS.break (== '?') $ rawPathInfo request
+    --let (entity,pstr) = BS.break (== '?') $ rawPathInfo request
     env <- ask
-    case entity of
+    case rawPathInfo request of
         "/database.migrate" -> do 
             liftIO $ DataBase.migrateDB (DataBase.dbConn env)
             return $ A.String "DataBase updated"
@@ -101,6 +107,7 @@ answear request = do
         "/user.add"    -> DataBase.userAdd $ (parseQuery . rawQueryString) request
         "/user.get"    -> DataBase.userGet $ (parseQuery . rawQueryString) request
         "/user.delete" -> DataBase.userDel $ (parseQuery . rawQueryString) request
+        "/user.change_pass" -> DataBase.userNewPass $ (parseQuery . rawQueryString) request
         -- Author API
         "/author.add"    -> DataBase.authorAdd $ (parseQuery . rawQueryString) request
         "/author.edit"   -> DataBase.authorEdit $ (parseQuery . rawQueryString) request
@@ -124,4 +131,8 @@ answear request = do
         "/draft.publish" -> DataBase.draftPublish $ (parseQuery . rawQueryString) request
         -- News API
         "/posts.get" -> DataBase.postGet $ (parseQuery . rawQueryString) request
-        _   -> throwError NotFound
+        -- Photos API
+        -- "/photos" -> DataBase.fileGet request
+        str   -> if BS.take 7 str == "/photos"
+            then DataBase.fileGet $ tail $ BS.toString str
+            else throwError NotFound
