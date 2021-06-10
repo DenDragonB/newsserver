@@ -4,6 +4,7 @@ This is a training project.
 News web-server.
 This product allows you to record and retrieve information from the database.
 To use it you must install Postgresql and create a new database
+Copy files to work directory.
 
 CONFIGURATION
 Please fill in the config.toml file
@@ -24,6 +25,16 @@ logMinLevel - inimum level of logging data.
     can be : Debug | Info | Warning | Error
 logTo - Where to output log
     can be : LogToFile | LogToConsole
+
+
+Before use start server, then send request to setup tables in database:
+
+http://<server_web_addres>:<port>/database.migrate
+
+for example:
+http://localhost:8080/database.migrate
+
+
 
 API description
 Only registered users can receive responses from the server.
@@ -83,16 +94,21 @@ You can ask for a paginated result.
 limit - optional. number of posts per page
 page - optional. page number in the output
 
+
 Drafts API
 
 Command: 
 
 draft.add - Add new draft to database
+
+PLEASE Remember the id to access the draft in future
+
 for example: 
     http://localhost:8080/draft.add?token=author
     &header=Phone of 2021&category_id=5&tags_id=[1,2]
     &content=there are same info about cell phones
-    &main_photo=photo.jpg&photos=['photo1.png','photo2.jpg']
+    &main_photo=http://localhost:8080/photos/photo.jpg
+    &photos=['http://localhost:8080/photos/photo1.png','http://localhost:8080/photos/photo2.jpg']
 
 Available parameters:
 token - key token for user identification. Only authors can add drafts.
@@ -104,36 +120,232 @@ main_photo - optional. Link to the main photo of the news
 photos - optional. Links to additional photos in square brackets separated by commas.
     Each link must be enclosed in apostrophes: ['photo1.png','photo2.jpg']
 
+Command: 
+
+draft.edit - Edit an existing draft.
+
+Available parameters:
+token - key token for user identification. Only author can edit draft.
+id - draft identification number
+
+Other parameters are optional. See their description in the command draft.add
+If the parameter is included in the request, its new value will be saved
+
+Commands: 
+
+draft.get - Returns the author's draft by its id
+draft.delete - Delete an existing draft.
+draft.publish - Publish a new post or update the data in the post from the draft
+
+Available parameters:
+token - key token for user identification. Only author can get or delete draft.
+id - draft identification number
 
 
+Users API
 
-        "/database.migrate" -> do 
-            liftIO $ DataBase.migrateDB (DataBase.dbConn env)
-            return $ A.String "DataBase updated"
-        -- Users API    
-        "/user.add"    -> DataBase.userAdd $ (parseQuery . rawQueryString) request
-        "/user.get"    -> DataBase.userGet $ (parseQuery . rawQueryString) request
-        "/user.delete" -> DataBase.userDel $ (parseQuery . rawQueryString) request
-        "/user.change_pass" -> DataBase.userNewPass $ (parseQuery . rawQueryString) request
-        -- Author API
-        "/author.add"    -> DataBase.authorAdd $ (parseQuery . rawQueryString) request
-        "/author.edit"   -> DataBase.authorEdit $ (parseQuery . rawQueryString) request
-        "/author.get"    -> DataBase.authorGet $ (parseQuery . rawQueryString) request
-        "/author.delete" -> DataBase.authorDelete $ (parseQuery . rawQueryString) request
-        -- Category API
-        "/category.add"    -> DataBase.categoryAdd $ (parseQuery . rawQueryString) request
-        "/category.edit"   -> DataBase.categoryEdit $ (parseQuery . rawQueryString) request
-        "/category.get"    -> DataBase.categoryGet $ (parseQuery . rawQueryString) request
-        "/category.delete" -> DataBase.categoryDelete $ (parseQuery . rawQueryString) request
-        -- Tags API
-        "/tag.add"    -> DataBase.tagAdd $ (parseQuery . rawQueryString) request
-        "/tag.edit"   -> DataBase.tagEdit $ (parseQuery . rawQueryString) request
-        "/tag.get"    -> DataBase.tagGet $ (parseQuery . rawQueryString) request
-        "/tag.delete" -> DataBase.tagDelete $ (parseQuery . rawQueryString) request
-        -- Drafts API
-        "/draft.add"    -> DataBase.draftAdd $ (parseQuery . rawQueryString) request
-        "/draft.edit"   -> DataBase.draftEdit $ (parseQuery . rawQueryString) request
-        "/draft.get"    -> DataBase.draftGet $ (parseQuery . rawQueryString) request
-        "/draft.delete" -> DataBase.draftDelete $ (parseQuery . rawQueryString) request
-        "/draft.publish" -> DataBase.draftPublish $ (parseQuery . rawQueryString) request
+Command: 
+
+user.add - register new user into database
+
+for example:
+http://localhost:8080/user.add?last_name=Ivanov&first_name=Ivan
+    &name=Cheburashka&pass=GenaTheBest
+    &avatar=http://localhost:8080/photos/uhi.jpg
+
+Available parameters:
+last_name - Last name of new user
+first_name - First name of new user
+name -username
+avatar - Link to avatar for new user
+pass - password of new user
+
+Command: 
+
+user.get - get list of users into database
+
+for example:
+http://localhost:8080/user.get?token=aa33&last_name=Bychkov&limit=2&page=2
+
+Available parameters:
+token - key token for user identification
+last_name - optional. search users by last name user
+first_name - optional. search users by first name user
+name - optional. search users by username
+
+Command: 
+
+user.delete - delete user from database
+
+for example:
+http://localhost:8080/user.delene?token=aa33&id=3
+
+Available parameters:
+token - key token for user identification. Only administrators can delete users
+id - id number of user
+
+Command: 
+
+user.change_pass - change pass for user and get new token
+
+for example:
+http://localhost:8080/user.change_pass?name=Cheburashka
+    &pass=GenaTheBest&new_pass=CheburashkaBetter
+
+Available parameters:
+name -username
+pass - password of user
+new_pass - new password
+
+
+Authors API
+
+Command:
+
+author.add - add user to authors
+
+for example
+http://localhost:8080/author.add?token=amin45&user_id=11&about=Thisisbestauthor
+
+Available parameters:
+token - key token for user identification. Only administrators can add authors
+user_id - id number of the user to make the author 
+about - description about author
+
+Command:
+
+author.edit - edit authors information
+
+for example
+http://localhost:8080/author.edit?token=amin45&id=2&user_id=5&about=Edit_Author
+
+Available parameters:
+token - key token for user identification. Only administrators can edit authors
+user_id - id number of the user to make the author 
+about - description about author
+
+Command:
+
+author.get - get list of authors into database
+
+for example
+http://localhost:8080/author.get?token=amin45&user_id=11
+
+Available parameters:
+token - key token for user identification. Only administrators can get authors
+user_id - optional. id number of the user to make the author 
+id - optional. id number of author
+
+Command:
+
+author.delete - delete author from database
+
+for example
+http://localhost:8080/author.delete?token=amin45&id=2
+
+Available parameters:
+token - key token for user identification. Only administrators can delete authors
+id - id number of author to delete
+
+
+Category API
+
+Command:
+
+category.add - add categoy to database
+
+for example
+http://localhost:8080/category.add?token=admin&name=Computers
+
+Available parameters:
+token - key token for user identification. Only administrators can add authors
+name - name of category 
+parent - id number of parent category
+
+Command:
+
+category.edit - edit an existing category
+
+for example
+http://localhost:8080/category.edit?token=admin&id=2&parent=1
+
+Available parameters:
+token - key token for user identification. Only administrators can edit authors
+id - id number of category
+name - optional. name of category 
+parent - optional. id number of parent category
+
+Command:
+
+category.get - get list of authors into database
+
+for example
+http://localhost:8080/category.get?token=user&id=1
+
+Available parameters:
+token - key token for user identification. Only administrators can get authors
+name - optional. name of category 
+id - optional. id number of category
+parent - optional. id number of parent category
+
+Command:
+
+category.delete - delete category from database
+
+for example
+http://localhost:8080/category.delete?token=admin&id=2
+
+Available parameters:
+token - key token for user identification. Only administrators can delete authors
+id - id number of category to delete
+
+
+Tags API
+
+Command:
+
+tag.add - add tag to database
+
+for example
+http://localhost:8080/tag.add?token=admin&name=Computer
+
+Available parameters:
+token - key token for user identification. Only administrators can add tags
+name - name of tag 
+
+Command:
+
+tag.edit - edit an existing tag
+
+for example
+http://localhost:8080/tag.edit?token=admin&id=5&name=Computer
+
+Available parameters:
+token - key token for user identification. Only administrators can edit tags
+id - id number of tag
+name - optional. name of tag 
+
+Command:
+
+tag.get - get list of tags into database
+
+for example
+http://localhost:8080/tag.get?token=admin
+
+Available parameters:
+token - key token for user identification
+name - optional. name of tags 
+id - optional. id number of tag
+
+
+Command:
+
+tag.delete - delete tag from database
+
+for example
+http://localhost:8080/tag.delete?token=admin&id=4
+
+Available parameters:
+token - key token for user identification. Only administrators can delete tags
+id - id number of tag to delete
 
