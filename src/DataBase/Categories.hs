@@ -1,18 +1,18 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 module DataBase.Categories where
 
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
 
-import           Control.Monad.Reader
 import           Control.Monad.Except
-import qualified Data.Aeson as A
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Text ( Text )
-import           Data.Text.Encoding (decodeUtf8)
-import           Data.Maybe (fromMaybe)
+import           Control.Monad.Reader
+import qualified Data.Aeson                         as A
+import qualified Data.ByteString.UTF8               as BS
+import           Data.Maybe                         (fromMaybe)
+import           Data.Text                          (Text)
+import           Data.Text.Encoding                 (decodeUtf8)
 
 import           DataBase
 import           DataBase.Users
@@ -20,23 +20,23 @@ import           Exceptions
 import           Logger
 
 data Category = Category
-    { cid :: Int 
+    { cid     :: Int
     , catName :: Text
-    , parent :: Int
+    , parent  :: Int
     } deriving (Show,Eq)
 instance A.ToJSON Category where
-    toJSON cat = A.object 
+    toJSON cat = A.object
         [ "id"        A..= cid cat
         , "name"      A..= catName cat
         , "parent_id" A..= parent cat
-        ]    
+        ]
 instance FromRow Category where
     fromRow = Category
         <$> field
-        <*> field 
+        <*> field
         <*> field
 
-categoryAdd :: 
+categoryAdd ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -58,22 +58,22 @@ categoryAdd param = do
                     isCat <- liftIO $ queryDB pool $ Query $
                         "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = '" <> name <> "');"
                     isPar <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> par <> ");"    
+                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> par <> ");"
                     when (fromOnly $ head isCat) (throwError ObjectExists)
                     unless (par == "0" || fromOnly (head isPar)) (throwError ParentNOTExists)
-                    liftIO $ Logger.debug (Logger.lConfig env) $ 
+                    liftIO $ Logger.debug (Logger.lConfig env) $
                         "Try add category name: " <> BS.toString name <> "; parent: "<> BS.toString par
                     _ <- liftIO $ execDB pool $ Query $
-                        "INSERT INTO Categories (CatName, Parent) VALUES" 
+                        "INSERT INTO Categories (CatName, Parent) VALUES"
                         <> "('" <> name <> "'," <> par <> ");"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Add category name: " <> BS.toString name
                     cat <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Categories WHERE CatName = '" <> name <> "';"
                     return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 
-categoryEdit :: 
+categoryEdit ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -98,23 +98,23 @@ categoryEdit param = do
                     isCatName <- liftIO $ queryDB pool $ Query $
                         "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = '" <> cname <> "');"
                     isPar <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> par <> ");"    
+                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> par <> ");"
                     unless (fromOnly $ head isCat) (throwError ObjectNOTExists)
                     unless (par == "0" || fromOnly (head isPar)) (throwError ParentNOTExists)
                     when (fromOnly $ head isCatName) (throwError ObjectExists)
                     _ <- liftIO $ execDB pool $ Query $
                         "UPDATE Categories SET Id = " <> cid
                         <> addToUpdate "CatName" cname
-                        <> addToUpdateNum "Parent" par 
+                        <> addToUpdateNum "Parent" par
                         <> " WHERE Id = " <> cid <> ";"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit category id: " <> BS.toString cid
                     cat <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Categories WHERE Id = " <> cid <> ";"
                     return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 
-categoryGet :: 
+categoryGet ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -133,15 +133,15 @@ categoryGet param = do
             let cpar = fromMaybe "" $ getParam "parent_id" param
             cat <- liftIO $ queryDB pool $ Query $
                 "SELECT * FROM Categories WHERE Id > 0 "
-                <> addFieldToQueryNumBS "Id" cid 
+                <> addFieldToQueryNumBS "Id" cid
                 <> addFieldToQueryBS "CatName" cname
-                <> addFieldToQueryNumBS "Parent" cpar 
+                <> addFieldToQueryNumBS "Parent" cpar
                 <> getLimitOffsetBS param
                 <> ";"
             return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 
-categoryDelete :: 
+categoryDelete ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -167,7 +167,7 @@ categoryDelete param = do
                     when (fromOnly $ head isHaveSub) (throwError CategoryWithSub)
                     _ <- liftIO $ execDB pool $ Query $
                         "DELETE FROM Categories WHERE Id = "<> cid <> ";"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete category id: " <> BS.toString cid
                     return $ A.String $ decodeUtf8 $ "Category with id "<>cid<>" deleted"
         _ -> throwError NotFound

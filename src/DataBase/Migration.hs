@@ -2,13 +2,13 @@
 
 module DataBase.Migration where
 
-import           System.Directory ( listDirectory )
-import qualified System.IO as IO
-import qualified Data.ByteString as BS
-import           Database.PostgreSQL.Simple.Types
-                    ( Query(Query), Only(fromOnly) )
-import           Control.Monad.Reader (when)
-import           Data.List (sort,isSuffixOf)
+import           Control.Monad.Reader             (when)
+import qualified Data.ByteString                  as BS
+import           Data.List                        (isSuffixOf, sort)
+import           Database.PostgreSQL.Simple.Types (Only (fromOnly),
+                                                   Query (Query))
+import           System.Directory                 (listDirectory)
+import qualified System.IO                        as IO
 
 import           DataBase
 import           Logger
@@ -37,7 +37,7 @@ versionDB pool = do
             <> "FROM information_schema.tables "
             <> "WHERE table_name = 'migrationhistory')" :: IO [Only Bool]
     if fromOnly isExist then (do
-        [v] <- queryDB pool 
+        [v] <- queryDB pool
             "SELECT MAX (FileNumber) FROM MigrationHistory" :: IO [Only String]
         putStrLn $ fromOnly v
         return $ ( Just . fromOnly) v) else return $ Just "0000"

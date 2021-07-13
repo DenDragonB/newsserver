@@ -3,12 +3,12 @@
 
 module Main where
 
-import qualified Data.Text as T
 import qualified Data.Aeson as Aeson
-import qualified Text.Toml as TOML
+import qualified Data.Text  as T
+import qualified Text.Toml  as TOML
 
-import qualified Logger
 import qualified DataBase
+import qualified Logger
 import qualified Web
 
 
@@ -18,8 +18,8 @@ data Config = Config
     , webConfig :: Web.Config
     } deriving (Show,Eq)
 instance Aeson.FromJSON Config where
-    parseJSON = Aeson.withObject "FromJSON Main.Config" $ \o -> 
-        Config  <$> o Aeson..: "logger"   
+    parseJSON = Aeson.withObject "FromJSON Main.Config" $ \o ->
+        Config  <$> o Aeson..: "logger"
                 <*> o Aeson..: "database"
                 <*> o Aeson..: "server"
 
@@ -28,7 +28,7 @@ main :: IO ()
 main = do
     -- read config
     tConf <- readFile "config.toml"
-    let toml = TOML.parseTomlDoc "" $ T.pack $ tConf
+    let toml = TOML.parseTomlDoc "" $ T.pack tConf
     case toml of
         Left err -> fail $ show err
         Right t  -> do

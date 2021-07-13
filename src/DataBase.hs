@@ -1,36 +1,34 @@
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell   #-}
-{-# LANGUAGE QuasiQuotes       #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module DataBase where
 
-import qualified Data.Aeson as A
+import qualified Data.Aeson                       as A
 import           GHC.Generics
 
+import           Control.Monad.Reader
+import qualified Data.ByteString.UTF8             as BS
+import           Data.Int
+import           Data.List
+import           Data.Maybe
+import           Data.Pool
 import           Database.PostgreSQL.Simple
 import           Database.PostgreSQL.Simple.Types
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Maybe
-import           Data.List
-import           Data.Pool
-import           Control.Monad.Reader
-import           Data.Int
 
 import qualified Logger
 
-import Data.Text.IO as TIO
-import Data.Text.Encoding
+import           Data.Text.Encoding
+import           Data.Text.IO                     as TIO
 
 data Config = Config
     { host :: String
     , port :: Int
-    , name :: String 
+    , name :: String
     , user :: String
-    , pass :: String       
+    , pass :: String
     } deriving (Show,Eq,Generic)
-instance A.FromJSON Config 
+instance A.FromJSON Config
 
 type DBPool = Pool Connection
 
@@ -43,7 +41,7 @@ class Monad m => MyDatabase m where
     execDB   :: DBPool -> Query -> m Int64
 instance MyDatabase IO where
     openPool Config {..} = do
-        let cInfo = ConnectInfo 
+        let cInfo = ConnectInfo
                 { connectHost = host
                 , connectPort = toEnum port
                 , connectUser = user
@@ -85,10 +83,10 @@ getLimitOffsetBS param = limit <> offset
         offset = if p <= 0 then ("" :: BS.ByteString)
             else BS.fromString $ " OFFSET " <> show (l*(p-1))
 
-getParam :: BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> Maybe BS.ByteString 
+getParam :: BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> Maybe BS.ByteString
 getParam name = foldr (func name) Nothing
     where
-        func name (pn,pe) ini = if pn /= name 
+        func name (pn,pe) ini = if pn /= name
             then ini
             else pe
 
@@ -138,13 +136,13 @@ addToUpdateNumArray field val = if val == ""
     else ", " <> field <> " = ARRAY" <> val
 
 addToUpdateNumArrayMap :: BS.ByteString -> [BS.ByteString] -> BS.ByteString
-addToUpdateNumArrayMap field vals = if null vals 
+addToUpdateNumArrayMap field vals = if null vals
     then ""
-    else ", " <> field <> 
+    else ", " <> field <>
         " = ARRAY[" <> (BS.drop 1 . foldr (\v ini -> ini<>","<>v) "") vals <> "]"
 
 addToUpdateArrayMap :: BS.ByteString -> [BS.ByteString] -> BS.ByteString
-addToUpdateArrayMap field vals = if null vals 
+addToUpdateArrayMap field vals = if null vals
     then ""
-    else ", " <> field <> 
+    else ", " <> field <>
         " = ARRAY[" <> (BS.drop 1 . foldr (\v ini -> ini<>",'"<>v<>"'") "") vals <> "]"

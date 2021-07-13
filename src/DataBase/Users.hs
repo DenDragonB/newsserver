@@ -1,5 +1,5 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 module DataBase.Users where
 
 import           Database.PostgreSQL.Simple
@@ -7,30 +7,30 @@ import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
 
-import           Control.Monad.Reader
 import           Control.Monad.Except
-import qualified Data.Aeson as A
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Text ( Text )
-import           Data.Text.Encoding (decodeUtf8)
-import           Data.Time
-import           Data.Maybe
+import           Control.Monad.Reader
 import           Crypto.BCrypt
+import qualified Data.Aeson                         as A
+import qualified Data.ByteString.UTF8               as BS
+import           Data.Maybe
+import           Data.Text                          (Text)
+import           Data.Text.Encoding                 (decodeUtf8)
+import           Data.Time
 
 import           DataBase
 import           Exceptions
 import           Logger
 
 data User = User
-    { uid :: Int
+    { uid       :: Int
     , firstName :: String
-    , lastName :: String
-    , avatar :: String
-    , userName :: String
-    , upass :: String
-    , regDate :: Day
-    , adm :: Bool
-    , token :: String
+    , lastName  :: String
+    , avatar    :: String
+    , userName  :: String
+    , upass     :: String
+    , regDate   :: Day
+    , adm       :: Bool
+    , token     :: String
     } deriving (Show,Eq)
 instance A.ToJSON User where
     toJSON user = A.object

@@ -1,42 +1,41 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Web where
 
-import           Network.Wai
-import           Network.HTTP.Types
-import           Network.Wai.Handler.Warp
-import qualified Data.Aeson as A
-import           GHC.Generics
-import qualified Data.Aeson.Encoding.Internal as A
-import qualified Data.ByteString.UTF8 as BS
-import qualified Data.ByteString.Lazy.UTF8 as BSLazy
-import           Data.Word
-import           Control.Monad.Reader
 import           Control.Monad.Except
+import           Control.Monad.Reader
+import qualified Data.Aeson                   as A
+import qualified Data.Aeson.Encoding.Internal as A
+import qualified Data.ByteString.Lazy.UTF8    as BSLazy
+import qualified Data.ByteString.UTF8         as BS
+import           Data.Word
+import           GHC.Generics
+import           Network.HTTP.Types
+import           Network.Wai
+import           Network.Wai.Handler.Warp
 
+import qualified DataBase
+import qualified DataBase.Authors             as DataBase
+import qualified DataBase.Categories          as DataBase
+import qualified DataBase.Drafts              as DataBase
+import qualified DataBase.Migration           as DataBase
+import qualified DataBase.Photos              as DataBase
+import qualified DataBase.Posts               as DataBase
+import qualified DataBase.Tags                as DataBase
+import qualified DataBase.Users               as DataBase
 import           Exceptions
 import qualified Logger
-import qualified DataBase
-import qualified DataBase.Migration as DataBase
-import qualified DataBase.Users as DataBase
-import qualified DataBase.Authors as DataBase
-import qualified DataBase.Categories as DataBase
-import qualified DataBase.Tags as DataBase
-import qualified DataBase.Drafts as DataBase
-import qualified DataBase.Posts as DataBase
-import qualified DataBase.Photos as DataBase
 
 newtype Config = Config
-    { port :: Int 
+    { port :: Int
     } deriving ( Show , Eq , Generic)
 instance A.FromJSON Config
 
 data Environment = Env
     Config
-    Logger.Config 
-    DataBase.DBPool    
+    Logger.Config
+    DataBase.DBPool
     deriving Show
 instance DataBase.HasDataBase Environment where
     dbConn (Env _ _ pool) = pool
@@ -56,7 +55,7 @@ start' = do
     let p = (port . sConfig) env
     Logger.info log $ "Start server at port " <> show p
     lift $ run p $ app env
- 
+
 start :: Environment -> IO ()
 start env = do
     Logger.info (Logger.lConfig env) $ "Start server at port " <> show (port $ sConfig env)
@@ -67,9 +66,9 @@ app env request respond = do
     Logger.debug (Logger.lConfig env) $ "Request received: " <> show request
     resp <- runAnswear env request
     respond $ case resp of
-        Right js -> sendText js
+        Right js         -> sendText js
         Left (Send file) -> sendFile file
-        Left err -> sendError err
+        Left err         -> sendError err
 
 sendError :: Errors -> Response
 sendError err = responseLBS
@@ -99,10 +98,10 @@ answear :: Request -> Answear
 answear request = do
     env <- ask
     case rawPathInfo request of
-        "/database.migrate" -> do 
+        "/database.migrate" -> do
             liftIO $ DataBase.migrateDB (DataBase.dbConn env)
             return $ A.String "DataBase updated"
-        -- Users API    
+        -- Users API
         "/user.add"    -> DataBase.userAdd $ (parseQuery . rawQueryString) request
         "/user.get"    -> DataBase.userGet $ (parseQuery . rawQueryString) request
         "/user.delete" -> DataBase.userDel $ (parseQuery . rawQueryString) request

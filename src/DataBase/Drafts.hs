@@ -1,42 +1,42 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 module DataBase.Drafts where
 
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
-import           GHC.Generics (Generic)
+import           GHC.Generics                       (Generic)
 
 
-import           Control.Monad.Reader
 import           Control.Monad.Except
-import qualified Data.Aeson as A
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Text ( Text )
-import           Data.Text.Encoding (decodeUtf8,encodeUtf8)
-import           Data.Maybe (fromMaybe)
+import           Control.Monad.Reader
+import qualified Data.Aeson                         as A
+import qualified Data.ByteString.UTF8               as BS
+import           Data.Maybe                         (fromMaybe)
+import           Data.Text                          (Text)
+import           Data.Text.Encoding                 (decodeUtf8, encodeUtf8)
 import           Data.Time
 
 import           DataBase
+import qualified DataBase.Posts                     as DB
 import           DataBase.Users
-import qualified DataBase.Posts as DB
 import           Exceptions
 import           Logger
 
 data Draft = Draft
-    { did :: Int
-    , newsId :: Int 
-    , header :: Text
-    , newsDate :: Day
-    , autorId :: Int
-    , catId :: Int
-    , tags :: PGArray Int
-    , content :: Text
+    { did       :: Int
+    , newsId    :: Int
+    , header    :: Text
+    , newsDate  :: Day
+    , autorId   :: Int
+    , catId     :: Int
+    , tags      :: PGArray Int
+    , content   :: Text
     , mainPhoto :: Text
-    , photos :: PGArray Text
+    , photos    :: PGArray Text
     } deriving (Show,Eq)
 instance A.ToJSON Draft where
-    toJSON draft = A.object 
+    toJSON draft = A.object
         [ "id"          A..= did draft
         , "post_id"     A..= newsId draft
         , "header"      A..= header draft
@@ -47,7 +47,7 @@ instance A.ToJSON Draft where
         , "content"     A..= content draft
         , "main_photo"  A..= mainPhoto draft
         , "photos"      A..= fromPGArray (photos draft)
-        ]    
+        ]
 instance FromRow Draft where
     fromRow = Draft
         <$> field
@@ -61,7 +61,7 @@ instance FromRow Draft where
         <*> field
         <*> field
 
-draftAdd :: 
+draftAdd ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -92,23 +92,23 @@ draftAdd param = do
                             dids <- liftIO $ queryDB pool $ Query $
                                 "INSERT INTO Drafts "
                                 <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
-                                <> " VALUES " 
+                                <> " VALUES "
                                 <> "('" <> header <> "', NOW() , 0 , "
                                 <> (BS.fromString . show . fromOnly . head) authors
-                                <> "," <> cat 
+                                <> "," <> cat
                                 <> ", ARRAY" <> tags <> ",'" <> cont <> "','" <> mph
                                 <> "', ARRAY" <> phs
                                 <> ") RETURNING Id;"
-                            liftIO $ Logger.info (Logger.lConfig env) $ 
+                            liftIO $ Logger.info (Logger.lConfig env) $
                                 "Add Draft: " <> BS.toString header
                             draft <- liftIO $ queryDB pool $ Query $ BS.fromString $
-                                "SELECT * FROM Drafts WHERE Id = " 
+                                "SELECT * FROM Drafts WHERE Id = "
                                 <> (show . fromOnly . head) (dids :: [Only Int]) <> ";"
                             return $ A.toJSON (draft :: [Draft])
                         _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
 
-draftEdit :: 
+draftEdit ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -133,7 +133,7 @@ draftEdit param = do
                 <> "AND Author = " <> author <> ");"
             unless (fromOnly $ head isDraft) (throwError ObjectNOTExists)
             let header = fromMaybe "" $ getParam "header" param
-            let cat = fromMaybe "" $ getParam "category_id" param            
+            let cat = fromMaybe "" $ getParam "category_id" param
             let tags = fromMaybe "" $ getParam "tags_id" param
             let cont = fromMaybe "" $ getParam "content" param
             let mph = fromMaybe "" $ getParam "main_photo" param
@@ -147,14 +147,14 @@ draftEdit param = do
                 <> addToUpdate "MainPhoto" mph
                 <> addToUpdateNumArray "Photos" phs
                 <> " WHERE Id = " <> did <> ";"
-            liftIO $ Logger.info (Logger.lConfig env) $ 
+            liftIO $ Logger.info (Logger.lConfig env) $
                 "Edit Draft id: " <> BS.toString did
             draft <- liftIO $ queryDB pool $ Query $
                 "SELECT * FROM Drafts WHERE Id = " <> did <> ";"
             return $ A.toJSON (draft :: [Draft])
         _ -> throwError NotFound
 
-draftGet :: 
+draftGet ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -181,7 +181,7 @@ draftGet param = do
             return $ A.toJSON (draft :: [Draft])
         _ -> throwError NotFound
 
-draftDelete :: 
+draftDelete ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -208,12 +208,12 @@ draftDelete param = do
             _ <- liftIO $ execDB pool $ Query $
                 "DELETE FROM Drafts WHERE Id = "<> did
                 <> "AND Author = " <> author <> ";"
-            liftIO $ Logger.info (Logger.lConfig env) $ 
+            liftIO $ Logger.info (Logger.lConfig env) $
                 "Delete Draft id: " <> BS.toString did
             return $ A.String $ decodeUtf8 $ "Draft with id " <> did <> " deleted"
         _ -> throwError NotFound
 
-draftPublish :: 
+draftPublish ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -240,7 +240,7 @@ draftPublish param = do
             let draft = head (drafts :: [Draft])
             news <- liftIO $ queryDB pool $ Query $ BS.fromString $
                 "SELECT Id FROM News WHERE Id = " <> show (newsId draft)
-            if null news 
+            if null news
                 then do
                     nids <- liftIO $ queryDB pool $ Query $
                         "INSERT INTO News "
@@ -252,7 +252,7 @@ draftPublish param = do
                     _ <- liftIO $ execDB pool $ Query $ BS.fromString $
                         "UPDATE Drafts SET News = " <> show nid
                         <> " WHERE Id = " <> BS.toString did
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Publish News id: " <> show nid
                     DB.postGet [("token",Just token),("id",(Just . BS.fromString . show) nid)]
                 else do
@@ -260,9 +260,9 @@ draftPublish param = do
                     _ <- liftIO $ execDB pool $ Query $
                         "UPDATE News SET (Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos) = "
                         <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
-                        <> "FROM Drafts WHERE Id = " <> did <> ")"                 
+                        <> "FROM Drafts WHERE Id = " <> did <> ")"
                         <> " WHERE Id = " <> (BS.fromString . show) nid <> ";"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Publish News id: " <> show nid
                     DB.postGet [("token",Just token),("id",(Just . BS.fromString . show) nid)]
         _ -> throwError NotFound

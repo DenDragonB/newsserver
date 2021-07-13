@@ -1,18 +1,19 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
+
 module DataBase.Authors where
 
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
 
-import           Control.Monad.Reader
 import           Control.Monad.Except
-import qualified Data.Aeson as A
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Text ( Text )
-import           Data.Text.Encoding (decodeUtf8)
-import           Data.Maybe (fromMaybe)
+import           Control.Monad.Reader
+import qualified Data.Aeson                         as A
+import qualified Data.ByteString.UTF8               as BS
+import           Data.Maybe                         (fromMaybe)
+import           Data.Text                          (Text)
+import           Data.Text.Encoding                 (decodeUtf8)
 
 import           DataBase
 import           DataBase.Users
@@ -20,23 +21,23 @@ import           Exceptions
 import           Logger
 
 data Author = Author
-    { aid :: Int 
+    { aid    :: Int
     , userId :: Int
-    , about :: Text
+    , about  :: Text
     } deriving (Show,Eq)
 instance A.ToJSON Author where
-    toJSON author = A.object 
+    toJSON author = A.object
         [ "id"         A..= aid author
         , "user_id"    A..= userId author
         , "about"      A..= about author
-        ]    
+        ]
 instance FromRow Author where
-    fromRow = Author 
+    fromRow = Author
         <$> field
-        <*> field 
+        <*> field
         <*> field
 
-authorAdd :: 
+authorAdd ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -47,7 +48,7 @@ authorAdd ::
 authorAdd param = do
     env <- ask
     admin <- findToken param
-    liftIO $ Logger.debug (Logger.lConfig env) $ 
+    liftIO $ Logger.debug (Logger.lConfig env) $
         "Just (User,Admin): " <> show admin
     case admin of
         Just (_, True ) -> do
@@ -58,14 +59,14 @@ authorAdd param = do
                     let pool = dbConn env
                     isUser <- liftIO $ queryDB pool $ Query $
                         "SELECT EXISTS (SELECT id FROM Users WHERE id = " <> uid <> ");"
-                    unless (fromOnly $ head isUser) (throwError UserNOTExists)   
+                    unless (fromOnly $ head isUser) (throwError UserNOTExists)
                     isAuthor <- liftIO $ queryDB pool $ Query $
                         "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = " <> uid <> ");"
                     when (fromOnly $ head isAuthor) (throwError ObjectExists)
                     _ <- liftIO $ execDB pool $ Query $
-                        "INSERT INTO Authors (UserId, About) VALUES" 
+                        "INSERT INTO Authors (UserId, About) VALUES"
                         <> "(" <> uid <> ",'" <> about <> "');"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Add author with user id: " <> BS.toString uid
                     author <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Authors WHERE UserId = " <> uid <> ";"
@@ -73,7 +74,7 @@ authorAdd param = do
                 _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
 
-authorEdit :: 
+authorEdit ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -99,16 +100,16 @@ authorEdit param = do
                     _ <- liftIO $ execDB pool $ Query $
                         "UPDATE Authors SET Id = " <> aid
                         <> addToUpdate "UserId" uid
-                        <> addToUpdate "About" about 
+                        <> addToUpdate "About" about
                         <> " WHERE Id = " <> aid <> ";"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit author id: " <> BS.toString aid
                     author <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Authors WHERE Id = " <> aid <> ";"
                     return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 
-authorGet :: 
+authorGet ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -126,14 +127,14 @@ authorGet param = do
             let aid = fromMaybe "" $ getParam "id" param
             author <- liftIO $ queryDB pool $ Query $
                 "SELECT * FROM Authors WHERE Id > 0 "
-                <> addFieldToQueryNumBS "Id" aid 
+                <> addFieldToQueryNumBS "Id" aid
                 <> addFieldToQueryNumBS "UserId" uid
                 <> getLimitOffsetBS param
                 <> ";"
             return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 
-authorDelete :: 
+authorDelete ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -156,7 +157,7 @@ authorDelete param = do
                     unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)
                     _ <- liftIO $ execDB pool $ Query $
                         "DELETE FROM Authors WHERE Id = "<> aid <> ";"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete author id: " <> BS.toString aid
                     return $ A.String $ decodeUtf8 $ "Author with id "<>aid<>" deleted"
         _ -> throwError NotFound

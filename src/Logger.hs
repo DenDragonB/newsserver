@@ -1,15 +1,16 @@
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Logger where
 
-import           Prelude hiding (log, error)
-import qualified System.IO as IO (IOMode (..),FilePath,withFile,hPutStrLn,stderr)
-import qualified Data.Aeson as A
+import qualified Data.Aeson           as A
+import qualified Data.Text            as T
+import           Data.Time.Clock
 import           GHC.Generics
-import qualified Data.Text as T
-import           Data.Time.Clock 
+import           Prelude              hiding (error, log)
+import qualified System.IO            as IO (FilePath, IOMode (..), hPutStrLn,
+                                             stderr, withFile)
 
 import           Control.Monad.Reader
 
@@ -26,14 +27,14 @@ instance MonadLog IO where
     info    c = log c Info
     warning c = log c Warning
     error   c = log c Error
-instance MonadIO m => MonadLog (ReaderT r m) where 
+instance MonadIO m => MonadLog (ReaderT r m) where
     debug   c str = liftIO $ log c Debug str
     info    c = liftIO . log c Info
     warning c = liftIO . log c Warning
     error   c = liftIO . log c Error
 
 
-data LogLevel 
+data LogLevel
     = Debug
     | Info
     | Warning
@@ -45,18 +46,18 @@ data LogTo
     = LogToFile
     | LogToConsole
     deriving (Eq, Ord, Show, Generic)
-instance A.FromJSON LogTo 
+instance A.FromJSON LogTo
 
 data Config = Config
-    { logTo   :: LogTo
-    , logPath :: IO.FilePath
+    { logTo       :: LogTo
+    , logPath     :: IO.FilePath
     , logMinLevel :: LogLevel
     } deriving (Show,Eq,Generic)
 instance A.FromJSON Config
 
 -- Output log string to file
 logToFile :: Config -> LogLevel -> String -> IO ()
-logToFile Config {..} lvl str = IO.withFile logPath IO.AppendMode 
+logToFile Config {..} lvl str = IO.withFile logPath IO.AppendMode
     (\ hdl -> do
         time <- getCurrentTime
         IO.hPutStrLn hdl $ show time ++ " - " ++ show lvl ++ ": " ++ str)

@@ -1,18 +1,18 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 module DataBase.Tags where
 
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
 
-import           Control.Monad.Reader
 import           Control.Monad.Except
-import qualified Data.Aeson as A
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Text ( Text )
-import           Data.Text.Encoding (decodeUtf8)
-import           Data.Maybe (fromMaybe)
+import           Control.Monad.Reader
+import qualified Data.Aeson                         as A
+import qualified Data.ByteString.UTF8               as BS
+import           Data.Maybe                         (fromMaybe)
+import           Data.Text                          (Text)
+import           Data.Text.Encoding                 (decodeUtf8)
 
 import           DataBase
 import           DataBase.Users
@@ -20,20 +20,20 @@ import           Exceptions
 import           Logger
 
 data Tag = Tag
-    { tid :: Int 
+    { tid     :: Int
     , tagName :: Text
     } deriving (Show,Eq)
 instance A.ToJSON Tag where
-    toJSON tag = A.object 
+    toJSON tag = A.object
         [ "id"        A..= tid tag
         , "name"      A..= tagName tag
-        ]    
+        ]
 instance FromRow Tag where
     fromRow = Tag
         <$> field
         <*> field
 
-tagAdd :: 
+tagAdd ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -52,19 +52,19 @@ tagAdd param = do
                 Just name -> do
                     let pool = dbConn env
                     isTag <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = '" <> name <> "');"  
+                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = '" <> name <> "');"
                     when (fromOnly $ head isTag) (throwError ObjectExists)
                     _ <- liftIO $ execDB pool $ Query $
-                        "INSERT INTO Tags (Tag) VALUES" 
+                        "INSERT INTO Tags (Tag) VALUES"
                         <> "('" <> name <> "');"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Add Tag: " <> BS.toString name
                     tag <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Tags WHERE Tag = '" <> name <> "';"
                     return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 
-tagEdit :: 
+tagEdit ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -85,14 +85,14 @@ tagEdit param = do
                     isTag <- liftIO $ queryDB pool $ Query $
                         "SELECT EXISTS (SELECT id FROM Tags WHERE Id = " <> tid <> ");"
                     isTagName <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = '" <> tname <> "');" 
+                        "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = '" <> tname <> "');"
                     unless (fromOnly $ head isTag) (throwError ObjectNOTExists)
                     when (fromOnly $ head isTagName) (throwError ObjectExists)
                     _ <- liftIO $ execDB pool $ Query $
                         "UPDATE Tags SET Id = " <> tid
                         <> addToUpdate "Tag" tname
                         <> " WHERE Id = " <> tid <> ";"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit Tag id: " <> BS.toString tid
                     tag <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Tags WHERE Id = " <> tid <> ";"
@@ -100,7 +100,7 @@ tagEdit param = do
                 _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
 
-tagGet :: 
+tagGet ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -118,14 +118,14 @@ tagGet param = do
             let tname = fromMaybe "" $ getParam "name" param
             tag <- liftIO $ queryDB pool $ Query $
                 "SELECT * FROM Tags WHERE Id > 0 "
-                <> addFieldToQueryNumBS "Id" tid 
+                <> addFieldToQueryNumBS "Id" tid
                 <> addFieldToQueryBS "Tag" tname
                 <> getLimitOffsetBS param
                 <> ";"
             return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 
-tagDelete :: 
+tagDelete ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -148,7 +148,7 @@ tagDelete param = do
                     unless (fromOnly $ head isTag) (throwError ObjectNOTExists)
                     _ <- liftIO $ execDB pool $ Query $
                         "DELETE FROM Tags WHERE Id = "<> tid <> ";"
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete Tag id: " <> BS.toString tid
                     return $ A.String $ decodeUtf8 $ "Tag with id " <> tid <> " deleted"
         _ -> throwError NotFound

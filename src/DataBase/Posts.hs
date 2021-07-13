@@ -1,20 +1,20 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 module DataBase.Posts where
 
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
-import           GHC.Generics (Generic)
+import           GHC.Generics                       (Generic)
 
 
-import           Control.Monad.Reader
 import           Control.Monad.Except
-import qualified Data.Aeson as A
-import qualified Data.ByteString.UTF8 as BS
-import           Data.Text ( Text )
-import           Data.Text.Encoding (decodeUtf8,encodeUtf8)
-import           Data.Maybe (fromMaybe)
+import           Control.Monad.Reader
+import qualified Data.Aeson                         as A
+import qualified Data.ByteString.UTF8               as BS
+import           Data.Maybe                         (fromMaybe)
+import           Data.Text                          (Text)
+import           Data.Text.Encoding                 (decodeUtf8, encodeUtf8)
 import           Data.Time
 
 import           DataBase
@@ -23,18 +23,18 @@ import           Exceptions
 import           Logger
 
 data News = News
-    { nid :: Int
-    , header :: Text
-    , newsDate :: Day
+    { nid        :: Int
+    , header     :: Text
+    , newsDate   :: Day
     , authorName :: Text
-    , catName :: Text
-    , tags :: PGArray Text
-    , content :: Text
-    , mainPhoto :: Text
-    , photos :: PGArray Text
+    , catName    :: Text
+    , tags       :: PGArray Text
+    , content    :: Text
+    , mainPhoto  :: Text
+    , photos     :: PGArray Text
     } deriving (Show,Eq)
 instance A.ToJSON News where
-    toJSON news = A.object 
+    toJSON news = A.object
         [ "id"          A..= nid news
         , "header"      A..= header news
         , "reg_date"    A..= newsDate news
@@ -44,7 +44,7 @@ instance A.ToJSON News where
         , "content"     A..= content news
         , "main_photo"  A..= mainPhoto news
         , "photos"      A..= fromPGArray (photos news)
-        ]    
+        ]
 instance FromRow News where
     fromRow = News
         <$> field
@@ -57,7 +57,7 @@ instance FromRow News where
         <*> field
         <*> field
 
-postGet :: 
+postGet ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -87,22 +87,22 @@ postGet param = do
                 <> "n.Content, n.MainPhoto, n.Photos  FROM News n "
                 -- Add Name of Author
                 <> " LEFT OUTER JOIN (Authors a JOIN Users u on a.userid = u.id)"
-                <> " ON n.Author = a.id "  
+                <> " ON n.Author = a.id "
                 -- Add name of Category
                 <> " LEFT OUTER JOIN Categories c ON n.Category = c.id "
                 -- Add names of Tags
                 <> "LEFT JOIN Tags t ON t.id = ANY(n.tags) "
-                <> " WHERE n.Id > 0 " 
+                <> " WHERE n.Id > 0 "
                 -- Add selection
-                <> addFieldToQueryNumBS "n.Id" nid 
-                <> addFieldToQueryBS "n.RegDate" ndate 
+                <> addFieldToQueryNumBS "n.Id" nid
+                <> addFieldToQueryBS "n.RegDate" ndate
                 <> addFieldToQueryLaterBS "n.RegDate" ndateLT
                 <> addFieldToQueryGraterBS "n.RegDate" ndateGT
                 <> addAuthorByName nauthor
                 <> addTag ntag
-                <> addTagsAny ntagIn 
+                <> addTagsAny ntagIn
                 <> addTagsAll ntagAll
-                <> addFindTextToSelectBS "n.Header" nheader 
+                <> addFindTextToSelectBS "n.Header" nheader
                 <> addFindTextToSelectBS "n.Content" ncont
                 -- group elements to correct work array_agg(tag)
                 <> "GROUP BY n.Id, n.Header, n.RegDate, u.UserName, c.CatName, "
@@ -118,17 +118,17 @@ postGet param = do
 addAuthorByName :: BS.ByteString -> BS.ByteString
 addAuthorByName val = if val == ""
     then ""
-    else " AND strpos(u.UserName,'" <> val <> "')>0 " 
+    else " AND strpos(u.UserName,'" <> val <> "')>0 "
 
 addTag :: BS.ByteString -> BS.ByteString
 addTag tag = if tag == ""
     then ""
-    else " AND Tags && ARRAY [" <> tag <> "]" 
+    else " AND Tags && ARRAY [" <> tag <> "]"
 
 addTagsAny :: BS.ByteString -> BS.ByteString
 addTagsAny tags = if tags == ""
     then ""
-    else " AND Tags && ARRAY" <> tags 
+    else " AND Tags && ARRAY" <> tags
 
 addTagsAll :: BS.ByteString -> BS.ByteString
 addTagsAll tags = if tags == ""
@@ -137,8 +137,8 @@ addTagsAll tags = if tags == ""
 
 addSortBy :: BS.ByteString -> BS.ByteString
 addSortBy val = case val of
-    "author" -> " ORDER BY u.UserName "
-    "date" -> " ORDER BY n.RegDate "
+    "author"   -> " ORDER BY u.UserName "
+    "date"     -> " ORDER BY n.RegDate "
     "category" -> " ORDER BY c.CatName "
-    "photos" -> " ORDER BY array_length (n.Photos,1) "
-    _ -> ""
+    "photos"   -> " ORDER BY array_length (n.Photos,1) "
+    _          -> ""
