@@ -80,7 +80,6 @@ tagEdit param = do
             let mtid = getParam "id" param
             let mname = getParam "name" param
             case sequence [mtid,mname] of
-                Nothing -> throwError WrongQueryParameter
                 Just [tid,tname] -> do
                     let pool = dbConn env
                     isTag <- liftIO $ queryDB pool $ Query $
@@ -98,6 +97,7 @@ tagEdit param = do
                     tag <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Tags WHERE Id = " <> tid <> ";"
                     return $ A.toJSON (tag :: [Tag])
+                _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
 
 tagGet :: 

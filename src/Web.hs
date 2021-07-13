@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Web where
 
@@ -7,6 +8,7 @@ import           Network.Wai
 import           Network.HTTP.Types
 import           Network.Wai.Handler.Warp
 import qualified Data.Aeson as A
+import           GHC.Generics
 import qualified Data.Aeson.Encoding.Internal as A
 import qualified Data.ByteString.UTF8 as BS
 import qualified Data.ByteString.Lazy.UTF8 as BSLazy
@@ -26,12 +28,10 @@ import qualified DataBase.Drafts as DataBase
 import qualified DataBase.Posts as DataBase
 import qualified DataBase.Photos as DataBase
 
-data Config = Config
+newtype Config = Config
     { port :: Int 
-    } deriving ( Show , Eq )
-instance A.FromJSON Config where
-    parseJSON = A.withObject "FromJSON Web.Config" $ \o -> 
-        Config <$> o A..: "port"
+    } deriving ( Show , Eq , Generic)
+instance A.FromJSON Config
 
 data Environment = Env
     Config
@@ -97,7 +97,6 @@ runAnswear env req = runExceptT $ runReaderT (answear req) env
 
 answear :: Request -> Answear
 answear request = do
-    --let (entity,pstr) = BS.break (== '?') $ rawPathInfo request
     env <- ask
     case rawPathInfo request of
         "/database.migrate" -> do 
@@ -132,7 +131,6 @@ answear request = do
         -- News API
         "/posts.get" -> DataBase.postGet $ (parseQuery . rawQueryString) request
         -- Photos API
-        -- "/photos" -> DataBase.fileGet request
         str   -> if BS.take 7 str == "/photos"
             then DataBase.fileGet $ tail $ BS.toString str
             else throwError NotFound

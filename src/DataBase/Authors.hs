@@ -54,7 +54,6 @@ authorAdd param = do
             let muid = getParam "user_id" param
             let mabout = getParam "about" param
             case sequence [muid,mabout] of
-                Nothing -> throwError WrongQueryParameter
                 Just [uid,about] -> do
                     let pool = dbConn env
                     isUser <- liftIO $ queryDB pool $ Query $
@@ -71,6 +70,7 @@ authorAdd param = do
                     author <- liftIO $ queryDB pool $ Query $
                         "SELECT * FROM Authors WHERE UserId = " <> uid <> ";"
                     return $ A.toJSON (author :: [Author])
+                _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
 
 authorEdit :: 

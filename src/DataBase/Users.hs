@@ -22,7 +22,7 @@ import           Exceptions
 import           Logger
 
 data User = User
-    { uid :: Int 
+    { uid :: Int
     , firstName :: String
     , lastName :: String
     , avatar :: String
@@ -33,7 +33,7 @@ data User = User
     , token :: String
     } deriving (Show,Eq)
 instance A.ToJSON User where
-    toJSON user = A.object 
+    toJSON user = A.object
         [ "id"         A..= uid user
         , "name"       A..= userName user
         , "first_name" A..= firstName user
@@ -41,22 +41,22 @@ instance A.ToJSON User where
         , "avatar"     A..= avatar user
         , "reg_date"   A..= regDate user
         , "token"      A..= token user
-        ]    
+        ]
 instance FromRow User where
-    fromRow = User 
+    fromRow = User
         <$> field
-        <*> field 
-        <*> field 
-        <*> field 
-        <*> field 
-        <*> field 
-        <*> field 
-        <*> field 
+        <*> field
+        <*> field
+        <*> field
+        <*> field
+        <*> field
+        <*> field
+        <*> field
         <*> field
 
 emptyUser :: User
 emptyUser = User
-    { uid = 0 
+    { uid = 0
     , firstName = ""
     , lastName = ""
     , avatar = ""
@@ -80,10 +80,10 @@ parseUser = foldr func emptyUser where
         _ -> user
 
 makeHash :: BS.ByteString -> BS.ByteString
-makeHash bs = fromMaybe "" $ hashPassword bs $ 
+makeHash bs = fromMaybe "" $ hashPassword bs $
     fromMaybe "" $ genSalt "$2b$" 6 "qsfvkpkvtnhtefhk"
 
-valUser :: User -> String 
+valUser :: User -> String
 valUser u = "'" <> firstName u
     <> "','" <> lastName u <> "'"
     <> ",'" <> avatar u <> "'"
@@ -91,7 +91,7 @@ valUser u = "'" <> firstName u
     <> ",md5('" <> upass u <> "')"
     <> ",md5('" <> (BS.toString . makeHash . BS.fromString) (userName u <> upass u) <> "')"
 
-userAdd :: 
+userAdd ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -107,25 +107,23 @@ userAdd param = do
                 "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '"
                 <> userName user
                 <> "')"
-    case fromOnly (head oldUser) of
-        True  -> throwError ObjectExists
-        False -> do
-            let us = user {token = (BS.toString . makeHash . BS.fromString) $ 
-                userName user <> upass user} 
-            _ <- liftIO $ execDB pool $ (Query . BS.fromString) $
-                "INSERT INTO Users "
-                <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
-                <> "VALUES ("
-                <> valUser user <> ", NOW ());"
-            u <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-                "SELECT * FROM Users WHERE id>0 " 
-                <> addFieldToQuery "UserName" (userName user)
-                <> addFieldToQuery "FirstName" (firstName user)
-                <> addFieldToQuery "LastName" (lastName user)
-            liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
-            return $ A.toJSON (u :: [User])
+    if fromOnly (head oldUser) then throwError ObjectExists else (do
+        let us = user {token = (BS.toString . makeHash . BS.fromString) $
+            userName user <> upass user}
+        _ <- liftIO $ execDB pool $ (Query . BS.fromString) $
+            "INSERT INTO Users "
+            <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
+            <> "VALUES ("
+            <> valUser user <> ", NOW ());"
+        u <- liftIO $ queryDB pool $ (Query . BS.fromString) $
+            "SELECT * FROM Users WHERE id>0 "
+            <> addFieldToQuery "UserName" (userName user)
+            <> addFieldToQuery "FirstName" (firstName user)
+            <> addFieldToQuery "LastName" (lastName user)
+        liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
+        return $ A.toJSON (u :: [User]))
 
-findToken :: 
+findToken ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -136,23 +134,23 @@ findToken ::
 findToken param = do
     env <- ask
     let token = getParam "token" param
-    liftIO $ Logger.debug (Logger.lConfig env) $ 
+    liftIO $ Logger.debug (Logger.lConfig env) $
                         "Request from user with token: " <> show token
-    if isNothing token 
+    if isNothing token
         then return Nothing
         else do
             let pool = dbConn env
             user <- liftIO $ queryDB pool $ Query $
-                    "SELECT EXISTS (SELECT id FROM Users WHERE token = '" 
+                    "SELECT EXISTS (SELECT id FROM Users WHERE token = '"
                     <> fromMaybe "" token <> "');"
             adm <- liftIO $ queryDB pool $ Query $
-                        "SELECT Adm FROM Users WHERE token = '" 
+                        "SELECT Adm FROM Users WHERE token = '"
                         <> fromMaybe "" token <> "';"
             case adm of
                 [] -> return $ Just ( fromOnly $ head user , False)
                 _  -> return $ Just ( fromOnly $ head user , fromOnly $ head adm)
 
-userGet :: 
+userGet ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -169,7 +167,7 @@ userGet param = do
             let user = parseUser param
             let pool = dbConn env
             u <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-                "SELECT * FROM Users WHERE id>0 " 
+                "SELECT * FROM Users WHERE id>0 "
                 <> addFieldToQuery "UserName" (userName user)
                 <> addFieldToQuery "FirstName" (firstName user)
                 <> addFieldToQuery "LastName" (lastName user)
@@ -177,7 +175,7 @@ userGet param = do
                 <> getLimitOffset param
             return $ A.toJSON (u :: [User])
 
-userDel :: 
+userDel ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -196,12 +194,11 @@ userDel param = do
                     let pool = dbConn env
                     _ <- liftIO $ execDB pool $ Query $
                         "DELETE FROM Users WHERE id = " <> uid
-                    liftIO $ Logger.info (Logger.lConfig env) $ 
+                    liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete user id: " <> BS.toString uid
                     return $ A.String $ decodeUtf8 $ "User with id "<>uid<>" deleted"
         _ -> throwError NotFound
-
-userNewPass :: 
+userNewPass ::
     ( MonadReader env m
     , HasDataBase env
     , HasLogger env
@@ -223,7 +220,7 @@ userNewPass param = do
             isPass <- liftIO $ queryDB pool $ Query $
                 "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '"
                 <> uName <> "' AND Pass = md5('" <> uPass <> "'));"
-            unless (fromOnly $ head isPass) (throwError WrongPass)            
+            unless (fromOnly $ head isPass) (throwError WrongPass)
             _ <- liftIO $ execDB pool $ Query $
                 "UPDATE Users SET "
                 <> "Pass = md5('" <> uNewPass <> "') "
@@ -232,6 +229,6 @@ userNewPass param = do
             u <- liftIO $ queryDB pool $ Query $
                 "SELECT * FROM Users WHERE UserName = '" <> uName <> "';"
             liftIO $ Logger.info (Logger.lConfig env) $ BS.toString $
-                "Change password for user: " <> uName 
+                "Change password for user: " <> uName
             return $ A.toJSON (u :: [User])
         _ -> throwError NotFound

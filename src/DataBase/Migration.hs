@@ -11,7 +11,7 @@ import           Control.Monad.Reader (when)
 import           Data.List (sort,isSuffixOf)
 
 import           DataBase
-import           Logger 
+import           Logger
 
 migrateDB :: DBPool -> IO ()
 migrateDB pool = do
@@ -36,10 +36,8 @@ versionDB pool = do
             "SELECT EXISTS (SELECT 1 "
             <> "FROM information_schema.tables "
             <> "WHERE table_name = 'migrationhistory')" :: IO [Only Bool]
-    case fromOnly isExist of
-        False -> return $ Just "0000"
-        _  -> do
-            [v] <- queryDB pool $
-                "SELECT MAX (FileNumber) FROM MigrationHistory" :: IO [Only String]
-            putStrLn $ fromOnly v
-            return $ ( Just . fromOnly) v
+    if fromOnly isExist then (do
+        [v] <- queryDB pool 
+            "SELECT MAX (FileNumber) FROM MigrationHistory" :: IO [Only String]
+        putStrLn $ fromOnly v
+        return $ ( Just . fromOnly) v) else return $ Just "0000"

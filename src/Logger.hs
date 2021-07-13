@@ -1,11 +1,13 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Logger where
 
 import           Prelude hiding (log, error)
 import qualified System.IO as IO (IOMode (..),FilePath,withFile,hPutStrLn,stderr)
 import qualified Data.Aeson as A
+import           GHC.Generics
 import qualified Data.Text as T
 import           Data.Time.Clock 
 
@@ -36,37 +38,21 @@ data LogLevel
     | Info
     | Warning
     | Error
-    deriving (Eq, Ord, Show)
-instance A.FromJSON LogLevel where
-    parseJSON = A.withText "FromJSON Logger.LogLevel" $ \t ->
-        case t of
-            "Debug"   -> pure Debug
-            "Info"    -> pure Info
-            "Warning" -> pure Warning
-            "Error"   -> pure Error
-            _         -> fail $ "Unknown log level: " ++ T.unpack t
+    deriving (Eq, Ord, Show, Generic)
+instance A.FromJSON LogLevel
 
 data LogTo
     = LogToFile
     | LogToConsole
-    deriving (Eq, Ord, Show)
-instance A.FromJSON LogTo where
-    parseJSON = A.withText "FromJSON Logger.LogTo" $ \t ->
-        case t of
-            "LogToFile"    -> pure LogToFile
-            "LogToConsole" -> pure LogToConsole
-            _         -> fail $ "Unknown where log to: " ++ T.unpack t
+    deriving (Eq, Ord, Show, Generic)
+instance A.FromJSON LogTo 
 
 data Config = Config
     { logTo   :: LogTo
     , logPath :: IO.FilePath
     , logMinLevel :: LogLevel
-    } deriving (Show,Eq)
-instance A.FromJSON Config where
-    parseJSON = A.withObject "FromJSON Logger.Config" $ \o -> 
-        Config <$> o A..: "logTo"
-               <*> o A..: "logPath" 
-               <*> o A..: "logMinLevel" 
+    } deriving (Show,Eq,Generic)
+instance A.FromJSON Config
 
 -- Output log string to file
 logToFile :: Config -> LogLevel -> String -> IO ()

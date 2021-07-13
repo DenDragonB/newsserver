@@ -84,7 +84,6 @@ draftAdd param = do
                     let mheader = getParam "header" param
                     let mcat = getParam "category_id" param
                     case sequence [mheader,mcat] of
-                        Nothing -> throwError WrongQueryParameter
                         Just [header,cat] -> do
                             let tags = fromMaybe "[]" $ getParam "tags_id" param
                             let cont = fromMaybe "" $ getParam "content" param
@@ -106,6 +105,7 @@ draftAdd param = do
                                 "SELECT * FROM Drafts WHERE Id = " 
                                 <> (show . fromOnly . head) (dids :: [Only Int]) <> ";"
                             return $ A.toJSON (draft :: [Draft])
+                        _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
 
 draftEdit :: 
@@ -237,7 +237,6 @@ draftPublish param = do
                 "SELECT * FROM Drafts WHERE Id = " <> did
                 <> "AND Author = " <> author <> ";"
             when (null drafts) (throwError ObjectNOTExists)
-            --let draft = (fromOnly . head) (drafts :: [Only Draft])
             let draft = head (drafts :: [Draft])
             news <- liftIO $ queryDB pool $ Query $ BS.fromString $
                 "SELECT Id FROM News WHERE Id = " <> show (newsId draft)
@@ -252,7 +251,7 @@ draftPublish param = do
                     let nid = (fromOnly . head) (nids :: [Only Int])
                     _ <- liftIO $ execDB pool $ Query $ BS.fromString $
                         "UPDATE Drafts SET News = " <> show nid
-                        <> " WHERE Id = " <> BS.toString did -- <> " AND Author = " <> show author <> ";"
+                        <> " WHERE Id = " <> BS.toString did
                     liftIO $ Logger.info (Logger.lConfig env) $ 
                         "Publish News id: " <> show nid
                     DB.postGet [("token",Just token),("id",(Just . BS.fromString . show) nid)]

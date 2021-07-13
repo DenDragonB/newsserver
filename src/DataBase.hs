@@ -2,10 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module DataBase where
 
 import qualified Data.Aeson as A
+import           GHC.Generics
 
 import           Database.PostgreSQL.Simple
 import           Database.PostgreSQL.Simple.Types
@@ -27,14 +29,8 @@ data Config = Config
     , name :: String 
     , user :: String
     , pass :: String       
-    } deriving (Show,Eq)
-instance A.FromJSON Config where
-    parseJSON = A.withObject "FromJSON Server.Config" $ \o -> 
-        Config <$> o A..: "host"
-               <*> o A..: "port" 
-               <*> o A..: "name" 
-               <*> o A..: "user" 
-               <*> o A..: "pass"
+    } deriving (Show,Eq,Generic)
+instance A.FromJSON Config 
 
 type DBPool = Pool Connection
 
