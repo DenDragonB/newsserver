@@ -39,6 +39,9 @@ class Monad m => MyDatabase m where
     openPool :: Config -> m DBPool
     queryDB  :: FromRow r => DBPool -> Query -> m [r]
     execDB   :: DBPool -> Query -> m Int64
+    queryDBsafe :: (ToRow q, FromRow r) => DBPool -> Query -> q -> m [r]
+    execDBsafe :: ToRow q => DBPool -> Query -> q -> m Int64
+
 instance MyDatabase IO where
     openPool Config {..} = do
         let cInfo = ConnectInfo
@@ -56,6 +59,8 @@ instance MyDatabase IO where
             4   -- Number of resources per sub-pool
     queryDB pool q = withResource pool $ \conn -> query_ conn q
     execDB pool q = withResource pool $ \conn -> execute_ conn q
+    queryDBsafe pool qstring qdata = withResource pool $ \conn -> query conn qstring qdata
+    execDBsafe pool qstring qdata = withResource pool $ \conn -> execute conn qstring qdata
 
 getLimitOffset :: [( BS.ByteString , Maybe BS.ByteString )] -> String
 getLimitOffset param = limit <> offset

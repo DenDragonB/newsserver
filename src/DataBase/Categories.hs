@@ -55,21 +55,24 @@ categoryAdd param = do
                 Nothing -> throwError WrongQueryParameter
                 Just name -> do
                     let pool = dbConn env
-                    isCat <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = '" <> name <> "');"
-                    isPar <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> par <> ");"
+                    isCat <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
+                        [name]
+                    isPar <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
+                        [par]
                     when (fromOnly $ head isCat) (throwError ObjectExists)
                     unless (par == "0" || fromOnly (head isPar)) (throwError ParentNOTExists)
                     liftIO $ Logger.debug (Logger.lConfig env) $
                         "Try add category name: " <> BS.toString name <> "; parent: "<> BS.toString par
-                    _ <- liftIO $ execDB pool $ Query $
-                        "INSERT INTO Categories (CatName, Parent) VALUES"
-                        <> "('" <> name <> "'," <> par <> ");"
+                    _ <- liftIO $ execDBsafe pool 
+                        (Query "INSERT INTO Categories (CatName, Parent) VALUES (?,?);")
+                        (name,par)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Add category name: " <> BS.toString name
-                    cat <- liftIO $ queryDB pool $ Query $
-                        "SELECT * FROM Categories WHERE CatName = '" <> name <> "';"
+                    cat <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT * FROM Categories WHERE CatName = ? ;")
+                        [name]
                     return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 
@@ -93,12 +96,15 @@ categoryEdit param = do
                 Nothing -> throwError WrongQueryParameter
                 Just cid -> do
                     let pool = dbConn env
-                    isCat <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> cid <> ");"
-                    isCatName <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = '" <> cname <> "');"
-                    isPar <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> par <> ");"
+                    isCat <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
+                        [cid]
+                    isCatName <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
+                        [cname]
+                    isPar <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
+                        [par]
                     unless (fromOnly $ head isCat) (throwError ObjectNOTExists)
                     unless (par == "0" || fromOnly (head isPar)) (throwError ParentNOTExists)
                     when (fromOnly $ head isCatName) (throwError ObjectExists)
@@ -159,14 +165,17 @@ categoryDelete param = do
                 Nothing -> throwError WrongQueryParameter
                 Just cid -> do
                     let pool = dbConn env
-                    isCat <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE Id = " <> cid <> ");"
-                    isHaveSub <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Categories WHERE Parent = " <> cid <> ");"
+                    isCat <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
+                        [cid]
+                    isHaveSub <- liftIO $ queryDBsafe pool
+                        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Parent = ?);")
+                        [cid]
                     unless (fromOnly $ head isCat) (throwError ObjectNOTExists)
                     when (fromOnly $ head isHaveSub) (throwError CategoryWithSub)
-                    _ <- liftIO $ execDB pool $ Query $
-                        "DELETE FROM Categories WHERE Id = "<> cid <> ";"
+                    _ <- liftIO $ execDBsafe pool
+                        (Query "DELETE FROM Categories WHERE Id = ?;")
+                        [cid]
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete category id: " <> BS.toString cid
                     return $ A.String $ decodeUtf8 $ "Category with id "<>cid<>" deleted"
