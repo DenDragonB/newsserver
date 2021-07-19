@@ -57,19 +57,22 @@ authorAdd param = do
             case sequence [muid,mabout] of
                 Just [uid,about] -> do
                     let pool = dbConn env
-                    isUser <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Users WHERE id = " <> uid <> ");"
+                    isUser <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
+                        [uid]
                     unless (fromOnly $ head isUser) (throwError UserNOTExists)
-                    isAuthor <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = " <> uid <> ");"
+                    isAuthor <- liftIO $ queryDBsafe pool
+                        (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
+                        [uid]
                     when (fromOnly $ head isAuthor) (throwError ObjectExists)
-                    _ <- liftIO $ execDB pool $ Query $
-                        "INSERT INTO Authors (UserId, About) VALUES"
-                        <> "(" <> uid <> ",'" <> about <> "');"
+                    _ <- liftIO $ execDBsafe pool 
+                        (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
+                        (uid , about )
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Add author with user id: " <> BS.toString uid
-                    author <- liftIO $ queryDB pool $ Query $
-                        "SELECT * FROM Authors WHERE UserId = " <> uid <> ";"
+                    author <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT * FROM Authors WHERE UserId = ? ;")
+                        [uid]
                     return $ A.toJSON (author :: [Author])
                 _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
@@ -94,8 +97,9 @@ authorEdit param = do
                 Nothing -> throwError WrongQueryParameter
                 Just aid -> do
                     let pool = dbConn env
-                    isAuthor <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Authors WHERE Id = " <> aid <> ");"
+                    isAuthor <- liftIO $ queryDBsafe pool 
+                        (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
+                        [aid]
                     unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)
                     _ <- liftIO $ execDB pool $ Query $
                         "UPDATE Authors SET Id = " <> aid
@@ -104,8 +108,9 @@ authorEdit param = do
                         <> " WHERE Id = " <> aid <> ";"
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit author id: " <> BS.toString aid
-                    author <- liftIO $ queryDB pool $ Query $
-                        "SELECT * FROM Authors WHERE Id = " <> aid <> ";"
+                    author <- liftIO $ queryDBsafe pool
+                        (Query "SELECT * FROM Authors WHERE Id = ? ;")
+                        [aid]
                     return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 
@@ -152,11 +157,13 @@ authorDelete param = do
                 Nothing -> throwError WrongQueryParameter
                 Just aid -> do
                     let pool = dbConn env
-                    isAuthor <- liftIO $ queryDB pool $ Query $
-                        "SELECT EXISTS (SELECT id FROM Authors WHERE Id = " <> aid <> ");"
+                    isAuthor <- liftIO $ queryDBsafe pool
+                        (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
+                        [aid]
                     unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)
-                    _ <- liftIO $ execDB pool $ Query $
-                        "DELETE FROM Authors WHERE Id = "<> aid <> ";"
+                    _ <- liftIO $ execDBsafe pool
+                        (Query "DELETE FROM Authors WHERE Id = ? ;")
+                        [aid]
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete author id: " <> BS.toString aid
                     return $ A.String $ decodeUtf8 $ "Author with id "<>aid<>" deleted"
