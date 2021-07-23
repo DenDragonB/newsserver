@@ -1,0 +1,29 @@
+# Main config Data of news web-server
+
+# server settings
+[server]
+port = 8080
+
+# config of database
+[database]
+
+host = "localhost"
+port = 5432
+user = "postgres"
+pass = "LionDragon40"
+name = "newsdb"
+
+# log settings
+[logger]
+# log file path. If "" then log write to log.txt
+logPath = ""
+
+# minimum level of logging data.
+# can be : Debug | Info | Warning | Error
+# if undefinde or not response than Debug
+logMinLevel = "Debug"
+
+# Where to output log
+# can be : LogToFile | LogToConsole
+# if undefinde or not response than LogToConsole
+logTo = "LogToConsole"
