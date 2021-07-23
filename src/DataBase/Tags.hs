@@ -1,10 +1,11 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataBase.Tags where
 
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
-
 
 import           Control.Monad.Except
 import           Control.Monad.Reader
@@ -13,6 +14,7 @@ import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (fromMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
+import           GHC.Generics
 
 import           DataBase
 import           DataBase.Users
@@ -22,16 +24,13 @@ import           Logger
 data Tag = Tag
     { tid     :: Int
     , tagName :: Text
-    } deriving (Show,Eq)
+    } deriving (Show,Eq,Generic)
 instance A.ToJSON Tag where
     toJSON tag = A.object
         [ "id"        A..= tid tag
         , "name"      A..= tagName tag
         ]
-instance FromRow Tag where
-    fromRow = Tag
-        <$> field
-        <*> field
+instance FromRow Tag
 
 tagAdd ::
     ( MonadReader env m

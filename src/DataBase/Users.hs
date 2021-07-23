@@ -1,11 +1,12 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataBase.Users where
 
 import           Database.PostgreSQL.Simple
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
-
 
 import           Control.Monad.Except
 import           Control.Monad.Reader
@@ -16,6 +17,7 @@ import           Data.Maybe
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           Data.Time
+import           GHC.Generics
 
 import           DataBase
 import           Exceptions
@@ -31,7 +33,7 @@ data User = User
     , regDate   :: Day
     , adm       :: Bool
     , token     :: String
-    } deriving (Show,Eq)
+    } deriving (Show,Eq,Generic)
 instance A.ToJSON User where
     toJSON user = A.object
         [ "id"         A..= uid user
@@ -42,17 +44,7 @@ instance A.ToJSON User where
         , "reg_date"   A..= regDate user
         , "token"      A..= token user
         ]
-instance FromRow User where
-    fromRow = User
-        <$> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
+instance FromRow User
 
 emptyUser :: User
 emptyUser = User

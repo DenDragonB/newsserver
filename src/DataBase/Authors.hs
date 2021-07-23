@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -6,7 +7,6 @@ module DataBase.Authors where
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
-
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
@@ -14,6 +14,7 @@ import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (fromMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
+import           GHC.Generics
 
 import           DataBase
 import           DataBase.Users
@@ -24,18 +25,14 @@ data Author = Author
     { aid    :: Int
     , userId :: Int
     , about  :: Text
-    } deriving (Show,Eq)
+    } deriving (Show,Eq,Generic)
 instance A.ToJSON Author where
     toJSON author = A.object
         [ "id"         A..= aid author
         , "user_id"    A..= userId author
         , "about"      A..= about author
         ]
-instance FromRow Author where
-    fromRow = Author
-        <$> field
-        <*> field
-        <*> field
+instance FromRow Author
 
 authorAdd ::
     ( MonadReader env m
@@ -57,7 +54,7 @@ authorAdd param = do
             case sequence [muid,mabout] of
                 Just [uid,about] -> do
                     let pool = dbConn env
-                    isUser <- liftIO $ queryDBsafe pool 
+                    isUser <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
                         [uid]
                     unless (fromOnly $ head isUser) (throwError UserNOTExists)
@@ -65,12 +62,12 @@ authorAdd param = do
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
                         [uid]
                     when (fromOnly $ head isAuthor) (throwError ObjectExists)
-                    _ <- liftIO $ execDBsafe pool 
+                    _ <- liftIO $ execDBsafe pool
                         (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
                         (uid , about )
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Add author with user id: " <> BS.toString uid
-                    author <- liftIO $ queryDBsafe pool 
+                    author <- liftIO $ queryDBsafe pool
                         (Query "SELECT * FROM Authors WHERE UserId = ? ;")
                         [uid]
                     return $ A.toJSON (author :: [Author])
@@ -97,7 +94,7 @@ authorEdit param = do
                 Nothing -> throwError WrongQueryParameter
                 Just aid -> do
                     let pool = dbConn env
-                    isAuthor <- liftIO $ queryDBsafe pool 
+                    isAuthor <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
                         [aid]
                     unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)

@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataBase.Drafts where
 
 import           Database.PostgreSQL.Simple.FromRow
@@ -34,7 +36,7 @@ data Draft = Draft
     , content   :: Text
     , mainPhoto :: Text
     , photos    :: PGArray Text
-    } deriving (Show,Eq)
+    } deriving (Show,Eq,Generic)
 instance A.ToJSON Draft where
     toJSON draft = A.object
         [ "id"          A..= did draft
@@ -48,18 +50,7 @@ instance A.ToJSON Draft where
         , "main_photo"  A..= mainPhoto draft
         , "photos"      A..= fromPGArray (photos draft)
         ]
-instance FromRow Draft where
-    fromRow = Draft
-        <$> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
+instance FromRow Draft
 
 draftAdd ::
     ( MonadReader env m

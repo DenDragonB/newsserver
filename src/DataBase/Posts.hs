@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataBase.Posts where
 
 import           Database.PostgreSQL.Simple.FromRow
@@ -32,7 +34,7 @@ data News = News
     , content    :: Text
     , mainPhoto  :: Text
     , photos     :: PGArray Text
-    } deriving (Show,Eq)
+    } deriving (Show,Eq,Generic)
 instance A.ToJSON News where
     toJSON news = A.object
         [ "id"          A..= nid news
@@ -45,17 +47,7 @@ instance A.ToJSON News where
         , "main_photo"  A..= mainPhoto news
         , "photos"      A..= fromPGArray (photos news)
         ]
-instance FromRow News where
-    fromRow = News
-        <$> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
-        <*> field
+instance FromRow News
 
 postGet ::
     ( MonadReader env m
