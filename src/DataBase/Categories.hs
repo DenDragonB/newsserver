@@ -11,7 +11,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe)
+import           Data.Maybe                         (fromMaybe, listToMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           GHC.Generics
@@ -59,8 +59,8 @@ categoryAdd param = do
                     isPar <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [par]
-                    when (fromOnly $ head isCat) (throwError ObjectExists)
-                    unless (par == "0" || fromOnly (head isPar)) (throwError ParentNOTExists)
+                    when (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectExists)
+                    unless (par == "0" || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
                     liftIO $ Logger.debug (Logger.lConfig env) $
                         "Try add category name: " <> BS.toString name <> "; parent: "<> BS.toString par
                     _ <- liftIO $ execDBsafe pool
@@ -103,9 +103,10 @@ categoryEdit param = do
                     isPar <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [par]
-                    unless (fromOnly $ head isCat) (throwError ObjectNOTExists)
-                    unless (par == "0" || fromOnly (head isPar)) (throwError ParentNOTExists)
-                    when (fromOnly $ head isCatName) (throwError ObjectExists)
+                    unless (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectNOTExists)
+                    unless (par == "0" || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
+                    when (maybe False fromOnly $ listToMaybe isCatName) (throwError ObjectExists)
+
                     _ <- liftIO $ execDB pool $ Query $
                         "UPDATE Categories SET Id = " <> cid
                         <> addToUpdate "CatName" cname
@@ -169,8 +170,8 @@ categoryDelete param = do
                     isHaveSub <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Parent = ?);")
                         [cid]
-                    unless (fromOnly $ head isCat) (throwError ObjectNOTExists)
-                    when (fromOnly $ head isHaveSub) (throwError CategoryWithSub)
+                    unless (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectNOTExists)
+                    when (maybe False fromOnly $ listToMaybe isHaveSub) (throwError CategoryWithSub)
                     _ <- liftIO $ execDBsafe pool
                         (Query "DELETE FROM Categories WHERE Id = ?;")
                         [cid]

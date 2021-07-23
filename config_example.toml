@@ -15,15 +15,13 @@ name = "newsdb"
 
 # log settings
 [logger]
-# log file path. If "" then log write to log.txt
+# log file path.
 logPath = ""
 
 # minimum level of logging data.
 # can be : Debug | Info | Warning | Error
-# if undefinde or not response than Debug
 logMinLevel = "Debug"
 
 # Where to output log
 # can be : LogToFile | LogToConsole
-# if undefinde or not response than LogToConsole
 logTo = "LogToConsole"

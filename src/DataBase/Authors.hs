@@ -11,7 +11,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe)
+import           Data.Maybe                         (fromMaybe, listToMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           GHC.Generics
@@ -57,11 +57,12 @@ authorAdd param = do
                     isUser <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
                         [uid]
-                    unless (fromOnly $ head isUser) (throwError UserNOTExists)
+
+                    unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
                     isAuthor <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
                         [uid]
-                    when (fromOnly $ head isAuthor) (throwError ObjectExists)
+                    when (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectExists)
                     _ <- liftIO $ execDBsafe pool
                         (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
                         (uid , about )
@@ -97,7 +98,7 @@ authorEdit param = do
                     isAuthor <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
                         [aid]
-                    unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)
+                    unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
                     _ <- liftIO $ execDB pool $ Query $
                         "UPDATE Authors SET Id = " <> aid
                         <> addToUpdate "UserId" uid
@@ -157,7 +158,7 @@ authorDelete param = do
                     isAuthor <- liftIO $ queryDBsafe pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
                         [aid]
-                    unless (fromOnly $ head isAuthor) (throwError ObjectNOTExists)
+                    unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
                     _ <- liftIO $ execDBsafe pool
                         (Query "DELETE FROM Authors WHERE Id = ? ;")
                         [aid]

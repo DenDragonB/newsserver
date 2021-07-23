@@ -12,6 +12,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Crypto.BCrypt
 import qualified Data.Aeson                         as A
+import qualified Data.ByteString.Conversion         as BS
 import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe
 import           Data.Text                          (Text)
@@ -62,14 +63,14 @@ emptyUser = User
 parseUser :: [( BS.ByteString , Maybe BS.ByteString )] -> User
 parseUser = foldr func emptyUser where
     func (pn,pe) user = case pn of
-        "id" -> user {uid = read $ BS.toString $ fromMaybe ("0" :: BS.ByteString) pe}
-        "last_name" -> user {lastName = BS.toString $ fromMaybe "" pe}
+        "id"         -> user {uid = fromMaybe 0 (pe >>= BS.fromByteString)}
+        "last_name"  -> user {lastName = BS.toString $ fromMaybe "" pe}
         "first_name" -> user {firstName = BS.toString $ fromMaybe "" pe}
-        "name" -> user {userName = BS.toString $ fromMaybe "" pe}
-        "avatar" -> user {avatar = BS.toString $ fromMaybe "" pe}
-        "pass" -> user {upass = BS.toString $ makeHash $ fromMaybe "" pe}
-        "token" -> user {token = BS.toString $ fromMaybe "" pe}
-        _ -> user
+        "name"       -> user {userName = BS.toString $ fromMaybe "" pe}
+        "avatar"     -> user {avatar = BS.toString $ fromMaybe "" pe}
+        "pass"       -> user {upass = BS.toString $ makeHash $ fromMaybe "" pe}
+        "token"      -> user {token = BS.toString $ fromMaybe "" pe}
+        _            -> user
 
 makeHash :: BS.ByteString -> BS.ByteString
 makeHash bs = fromMaybe "" $ hashPassword bs $
@@ -95,22 +96,22 @@ userAdd param = do
     let user = parseUser param
     env <- ask
     let pool = dbConn env
-    oldUser <- liftIO $ queryDBsafe pool 
+    oldUser <- liftIO $ queryDBsafe pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
                 [userName user]
-    if fromOnly (head oldUser) then throwError ObjectExists else (do
-        let us = user {token = (BS.toString . makeHash . BS.fromString) $
-            userName user <> upass user}
-        _ <- liftIO $ execDB pool $ (Query . BS.fromString) $
-            "INSERT INTO Users "
-            <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
-            <> "VALUES ("
-            <> valUser user <> ", NOW ());"
-        u <- liftIO $ queryDBsafe pool 
-            (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-            (userName user, firstName user, lastName user)
-        liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
-        return $ A.toJSON (u :: [User]))
+    when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
+    let us = user {token = (BS.toString . makeHash . BS.fromString) $
+        userName user <> upass user}
+    _ <- liftIO $ execDB pool $ (Query . BS.fromString) $
+        "INSERT INTO Users "
+        <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
+        <> "VALUES ("
+        <> valUser user <> ", NOW ());"
+    u <- liftIO $ queryDBsafe pool
+        (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
+        (userName user, firstName user, lastName user)
+    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
+    return $ A.toJSON (u :: [User])
 
 findToken ::
     ( MonadReader env m
@@ -129,15 +130,15 @@ findToken param = do
         then return Nothing
         else do
             let pool = dbConn env
-            user <- liftIO $ queryDBsafe pool 
+            user <- liftIO $ queryDBsafe pool
                     (Query "SELECT EXISTS (SELECT id FROM Users WHERE token = ? );")
                     [fromMaybe "" token]
             adm <- liftIO $ queryDBsafe pool
                     (Query "SELECT Adm FROM Users WHERE token = ? ;")
                     [fromMaybe "" token]
             case adm of
-                [] -> return $ Just ( fromOnly $ head user , False)
-                _  -> return $ Just ( fromOnly $ head user , fromOnly $ head adm)
+                [] -> return $ Just ( maybe False fromOnly $ listToMaybe user , False)
+                _  -> return $ Just ( maybe False fromOnly $ listToMaybe user , maybe False fromOnly $ listToMaybe adm)
 
 userGet ::
     ( MonadReader env m
@@ -208,15 +209,15 @@ userNewPass param = do
             isUser <- liftIO $ queryDBsafe pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
                 [uName]
-            unless (fromOnly $ head isUser) (throwError UserNOTExists)
+            unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
             isPass <- liftIO $ queryDBsafe pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));")
                 (uName,uPass)
-            unless (fromOnly $ head isPass) (throwError WrongPass)
-            _ <- liftIO $ execDBsafe pool 
+            unless (maybe False fromOnly $ listToMaybe isPass) (throwError WrongPass)
+            _ <- liftIO $ execDBsafe pool
                 (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
                 (uNewPass,makeHash (uName <> uNewPass),uName)
-            u <- liftIO $ queryDBsafe pool 
+            u <- liftIO $ queryDBsafe pool
                 (Query "SELECT * FROM Users WHERE UserName = ? ;")
                 [uName]
             liftIO $ Logger.info (Logger.lConfig env) $ BS.toString $

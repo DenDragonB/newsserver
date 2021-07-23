@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 197245c3d9c3772412a54e4ab33b1ab2ebe4b344177b333399ca6c3f3891c958
+-- hash: 3ce8eed71a3e7e592b0cef8c4ce176337e946ae97717f8a1080244dc58499aaa
 
 name:           newsserver
 version:        0.1.0.0
@@ -48,6 +48,7 @@ library
     , base >=4.7 && <5
     , bcrypt
     , bytestring
+    , bytestring-conversion
     , directory
     , htoml
     , http-types
@@ -74,6 +75,7 @@ executable newsserver-exe
     , base >=4.7 && <5
     , bcrypt
     , bytestring
+    , bytestring-conversion
     , directory
     , htoml
     , http-types
@@ -102,6 +104,7 @@ test-suite newsserver-test
     , base >=4.7 && <5
     , bcrypt
     , bytestring
+    , bytestring-conversion
     , directory
     , htoml
     , http-types

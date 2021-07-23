@@ -8,6 +8,7 @@ import qualified Data.Aeson                       as A
 import           GHC.Generics
 
 import           Control.Monad.Reader
+import qualified Data.ByteString.Conversion       as BS
 import qualified Data.ByteString.UTF8             as BS
 import           Data.Int
 import           Data.List
@@ -65,11 +66,8 @@ instance MyDatabase IO where
 getLimitOffset :: [( BS.ByteString , Maybe BS.ByteString )] -> String
 getLimitOffset param = limit <> offset
     where
-        func :: BS.ByteString -> ( BS.ByteString , Maybe BS.ByteString ) -> Int -> Int
-        func name (pn,pe) ini = if pn /= name then ini
-            else  read $ BS.toString $ fromMaybe ("0" :: BS.ByteString) pe
-        l = (read . BS.toString . fromMaybe "0" . getParam "limit") param
-        p = (read . BS.toString . fromMaybe "0" . getParam "page") param
+        l = fromMaybe (0 :: Int) (getParam "limit" param >>= BS.fromByteString)
+        p = fromMaybe (0 :: Int) (getParam "page" param >>= BS.fromByteString)
         limit = if l <= 0 then ""
             else " LIMIT " <> show l
         offset = if p <= 0 then ""
@@ -78,11 +76,8 @@ getLimitOffset param = limit <> offset
 getLimitOffsetBS :: [( BS.ByteString , Maybe BS.ByteString )] -> BS.ByteString
 getLimitOffsetBS param = limit <> offset
     where
-        func :: BS.ByteString -> ( BS.ByteString , Maybe BS.ByteString ) -> Int -> Int
-        func name (pn,pe) ini = if pn /= name then ini
-            else  read $ BS.toString $ fromMaybe ("0" :: BS.ByteString) pe
-        l = (read . BS.toString . fromMaybe "0" . getParam "limit") param
-        p = (read . BS.toString . fromMaybe "0" . getParam "page") param
+        l = fromMaybe (0 :: Int) (getParam "limit" param >>= BS.fromByteString)
+        p = fromMaybe (0 :: Int) (getParam "page" param >>= BS.fromByteString)
         limit = if l <= 0 then (""  :: BS.ByteString)
             else BS.fromString $ " LIMIT "  <> show l
         offset = if p <= 0 then ("" :: BS.ByteString)

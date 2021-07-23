@@ -25,6 +25,7 @@ dependencies:
 - mtl
 - transformers
 - bytestring
+- bytestring-conversion
 - aeson
 - bcrypt
 - time
