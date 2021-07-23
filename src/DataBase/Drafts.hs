@@ -66,9 +66,10 @@ draftAdd param = do
     case mtoken of
         Just token -> do
             let pool = dbConn env
-            authors <- liftIO $ queryDB pool $ Query $
-                "SELECT id FROM Authors WHERE UserId = "
-                <> "(SELECT Id FROM Users WHERE Token = '" <> token <> "');"
+            authors <- liftIO $ queryDBsafe pool 
+                (Query "SELECT id FROM Authors WHERE UserId = "
+                    <> "(SELECT Id FROM Users WHERE Token = ? );")
+                [token]
             case (authors :: [Only Int]) of
                 [] -> throwError AuthorNOTExists
                 _ -> do
@@ -80,21 +81,17 @@ draftAdd param = do
                             let cont = fromMaybe "" $ getParam "content" param
                             let mph = fromMaybe "" $ getParam "main_photo" param
                             let phs = fromMaybe "[]" $ getParam "photos" param
-                            dids <- liftIO $ queryDB pool $ Query $
-                                "INSERT INTO Drafts "
-                                <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
-                                <> " VALUES "
-                                <> "('" <> header <> "', NOW() , 0 , "
-                                <> (BS.fromString . show . fromOnly . head) authors
-                                <> "," <> cat
-                                <> ", ARRAY" <> tags <> ",'" <> cont <> "','" <> mph
-                                <> "', ARRAY" <> phs
-                                <> ") RETURNING Id;"
+                            dids <- liftIO $ queryDBsafe pool 
+                                (Query "INSERT INTO Drafts "
+                                    <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
+                                    <> " VALUES ( ?,NOW(),0,?,?, ARRAY ?,?,?, ARRAY ?) RETURNING Id;")
+                                (header,(BS.fromString . show . fromOnly . head) authors,
+                                cat,tags,cont,mph,phs)
                             liftIO $ Logger.info (Logger.lConfig env) $
                                 "Add Draft: " <> BS.toString header
-                            draft <- liftIO $ queryDB pool $ Query $ BS.fromString $
-                                "SELECT * FROM Drafts WHERE Id = "
-                                <> (show . fromOnly . head) (dids :: [Only Int]) <> ";"
+                            draft <- liftIO $ queryDBsafe pool 
+                                (Query "SELECT * FROM Drafts WHERE Id = ? ;")
+                                [(show . fromOnly . head) (dids :: [Only Int])]
                             return $ A.toJSON (draft :: [Draft])
                         _ -> throwError WrongQueryParameter
         _ -> throwError NotFound
@@ -114,14 +111,15 @@ draftEdit param = do
     case sequence [mtoken,mdid] of
         Just [token,did] -> do
             let pool = dbConn env
-            authors <- liftIO $ queryDB pool $ Query $
-                "SELECT id FROM Authors WHERE UserId = "
-                <> "(SELECT Id FROM Users WHERE Token = '" <> token <> "');"
+            authors <- liftIO $ queryDBsafe pool 
+                (Query "SELECT id FROM Authors WHERE UserId = "
+                    <> "(SELECT Id FROM Users WHERE Token = ?);")
+                [token]
             when (null authors) (throwError AuthorNOTExists)
             let author = (BS.fromString . show . fromOnly . head) (authors :: [Only Int])
-            isDraft <- liftIO $ queryDB pool $ Query $
-                "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = " <> did
-                <> "AND Author = " <> author <> ");"
+            isDraft <- liftIO $ queryDBsafe pool 
+                (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
+                (did,author)
             unless (fromOnly $ head isDraft) (throwError ObjectNOTExists)
             let header = fromMaybe "" $ getParam "header" param
             let cat = fromMaybe "" $ getParam "category_id" param
@@ -140,8 +138,9 @@ draftEdit param = do
                 <> " WHERE Id = " <> did <> ";"
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Edit Draft id: " <> BS.toString did
-            draft <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM Drafts WHERE Id = " <> did <> ";"
+            draft <- liftIO $ queryDBsafe pool
+                (Query "SELECT * FROM Drafts WHERE Id = ? ;")
+                [did]
             return $ A.toJSON (draft :: [Draft])
         _ -> throwError NotFound
 
@@ -160,14 +159,15 @@ draftGet param = do
     case sequence [mtoken,mdid] of
         Just [token,did] -> do
             let pool = dbConn env
-            authors <- liftIO $ queryDB pool $ Query $
-                "SELECT id FROM Authors WHERE UserId = "
-                <> "(SELECT Id FROM Users WHERE Token = '" <> token <> "');"
+            authors <- liftIO $ queryDBsafe pool 
+                (Query "SELECT id FROM Authors WHERE UserId = "
+                    <> "(SELECT Id FROM Users WHERE Token = ?);")
+                [token]
             when (null authors) (throwError AuthorNOTExists)
             let author = (BS.fromString . show . fromOnly . head) (authors :: [Only Int])
-            draft <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM Drafts WHERE Id = " <> did
-                <> "AND Author = " <> author <> ";"
+            draft <- liftIO $ queryDBsafe pool 
+                (Query "SELECT * FROM Drafts WHERE Id = ? AND Author = ? ;")
+                (did,author)
             when (null draft) (throwError ObjectNOTExists)
             return $ A.toJSON (draft :: [Draft])
         _ -> throwError NotFound
@@ -187,18 +187,19 @@ draftDelete param = do
     case sequence [mtoken,mdid] of
         Just [token,did] -> do
             let pool = dbConn env
-            authors <- liftIO $ queryDB pool $ Query $
-                "SELECT id FROM Authors WHERE UserId = "
-                <> "(SELECT Id FROM Users WHERE Token = '" <> token <> "');"
+            authors <- liftIO $ queryDBsafe pool 
+                (Query "SELECT id FROM Authors WHERE UserId = "
+                    <> "(SELECT Id FROM Users WHERE Token = ?);")
+                [token]
             when (null authors) (throwError AuthorNOTExists)
             let author = (BS.fromString . show . fromOnly . head) (authors :: [Only Int])
-            isDraft <- liftIO $ queryDB pool $ Query $
-                "SELECT EXISTS (SELECT Id FROM Drafts WHERE Id = " <> did
-                <> "AND Author = " <> author <> ");"
+            isDraft <- liftIO $ queryDBsafe pool 
+                (Query "SELECT EXISTS (SELECT Id FROM Drafts WHERE Id = ? AND Author = ? );")
+                (did,author)
             unless (fromOnly $ head isDraft) (throwError ObjectNOTExists)
-            _ <- liftIO $ execDB pool $ Query $
-                "DELETE FROM Drafts WHERE Id = "<> did
-                <> "AND Author = " <> author <> ";"
+            _ <- liftIO $ execDBsafe pool 
+                (Query "DELETE FROM Drafts WHERE Id = ? AND Author = ? ;")
+                (did,author)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Delete Draft id: " <> BS.toString did
             return $ A.String $ decodeUtf8 $ "Draft with id " <> did <> " deleted"
@@ -219,40 +220,43 @@ draftPublish param = do
     case sequence [mtoken,mdid] of
         Just [token,did] -> do
             let pool = dbConn env
-            authors <- liftIO $ queryDB pool $ Query $
-                "SELECT id FROM Authors WHERE UserId = "
-                <> "(SELECT Id FROM Users WHERE Token = '" <> token <> "');"
+            authors <- liftIO $ queryDBsafe pool 
+                (Query "SELECT id FROM Authors WHERE UserId = "
+                    <> "(SELECT Id FROM Users WHERE Token = ?);"
+                [token]
             when (null authors) (throwError AuthorNOTExists)
             let author = (BS.fromString . show . fromOnly . head) (authors :: [Only Int])
-            drafts <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM Drafts WHERE Id = " <> did
-                <> "AND Author = " <> author <> ";"
+            drafts <- liftIO $ queryDBsafe pool
+                (Query "SELECT * FROM Drafts WHERE Id = ? AND Author = ? ;")
+                (did,author)
             when (null drafts) (throwError ObjectNOTExists)
             let draft = head (drafts :: [Draft])
-            news <- liftIO $ queryDB pool $ Query $ BS.fromString $
-                "SELECT Id FROM News WHERE Id = " <> show (newsId draft)
+            news <- liftIO $ queryDBsafe pool 
+                (Query "SELECT Id FROM News WHERE Id = ? ;")
+                [newsId draft]
             if null news
                 then do
-                    nids <- liftIO $ queryDB pool $ Query $
-                        "INSERT INTO News "
-                        <> "(Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos)"
-                        <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
-                        <> "FROM Drafts WHERE Id = " <> did <> ")"
-                        <> " RETURNING Id;"
+                    nids <- liftIO $ queryDBsafe pool 
+                        (Query "INSERT INTO News "
+                            <> "(Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos)"
+                            <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
+                            <> "FROM Drafts WHERE Id = ? ) RETURNING Id;"
+                        [did]
                     let nid = (fromOnly . head) (nids :: [Only Int])
-                    _ <- liftIO $ execDB pool $ Query $ BS.fromString $
-                        "UPDATE Drafts SET News = " <> show nid
-                        <> " WHERE Id = " <> BS.toString did
+                    _ <- liftIO $ execDBsafe pool 
+                        (Query "UPDATE Drafts SET News = ? WHERE Id = ? ;")
+                        (nid,did)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Publish News id: " <> show nid
                     DB.postGet [("token",Just token),("id",(Just . BS.fromString . show) nid)]
                 else do
                     let nid = (fromOnly . head) (news :: [Only Int])
-                    _ <- liftIO $ execDB pool $ Query $
-                        "UPDATE News SET (Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos) = "
-                        <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
-                        <> "FROM Drafts WHERE Id = " <> did <> ")"
-                        <> " WHERE Id = " <> (BS.fromString . show) nid <> ";"
+                    _ <- liftIO $ execDBsafe pool
+                        (Query "UPDATE News SET "
+                            <> "(Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos) = "
+                            <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
+                            <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;"
+                        (did,nid)   
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Publish News id: " <> show nid
                     DB.postGet [("token",Just token),("id",(Just . BS.fromString . show) nid)]

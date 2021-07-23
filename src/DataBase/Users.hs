@@ -95,10 +95,9 @@ userAdd param = do
     let user = parseUser param
     env <- ask
     let pool = dbConn env
-    oldUser <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-                "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '"
-                <> userName user
-                <> "')"
+    oldUser <- liftIO $ queryDBsafe pool 
+                (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
+                [userName user]
     if fromOnly (head oldUser) then throwError ObjectExists else (do
         let us = user {token = (BS.toString . makeHash . BS.fromString) $
             userName user <> upass user}
@@ -107,11 +106,9 @@ userAdd param = do
             <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
             <> "VALUES ("
             <> valUser user <> ", NOW ());"
-        u <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-            "SELECT * FROM Users WHERE id>0 "
-            <> addFieldToQuery "UserName" (userName user)
-            <> addFieldToQuery "FirstName" (firstName user)
-            <> addFieldToQuery "LastName" (lastName user)
+        u <- liftIO $ queryDBsafe pool 
+            (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
+            (userName user, firstName user, lastName user)
         liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
         return $ A.toJSON (u :: [User]))
 
@@ -132,12 +129,12 @@ findToken param = do
         then return Nothing
         else do
             let pool = dbConn env
-            user <- liftIO $ queryDB pool $ Query $
-                    "SELECT EXISTS (SELECT id FROM Users WHERE token = '"
-                    <> fromMaybe "" token <> "');"
-            adm <- liftIO $ queryDB pool $ Query $
-                        "SELECT Adm FROM Users WHERE token = '"
-                        <> fromMaybe "" token <> "';"
+            user <- liftIO $ queryDBsafe pool 
+                    (Query "SELECT EXISTS (SELECT id FROM Users WHERE token = ? );")
+                    [fromMaybe "" token]
+            adm <- liftIO $ queryDBsafe pool
+                    (Query "SELECT Adm FROM Users WHERE token = ? ;")
+                    [fromMaybe "" token]
             case adm of
                 [] -> return $ Just ( fromOnly $ head user , False)
                 _  -> return $ Just ( fromOnly $ head user , fromOnly $ head adm)
@@ -184,12 +181,14 @@ userDel param = do
                 Just uid -> do
                     env <- ask
                     let pool = dbConn env
-                    _ <- liftIO $ execDB pool $ Query $
-                        "DELETE FROM Users WHERE id = " <> uid
+                    _ <- liftIO $ execDBsafe pool
+                        (Query "DELETE FROM Users WHERE id = ? ;")
+                        [uid]
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete user id: " <> BS.toString uid
                     return $ A.String $ decodeUtf8 $ "User with id "<>uid<>" deleted"
         _ -> throwError NotFound
+
 userNewPass ::
     ( MonadReader env m
     , HasDataBase env
@@ -206,20 +205,20 @@ userNewPass param = do
     case sequence [mUserName,mPass,mNewPass] of
         Just [uName,uPass,uNewPass] -> do
             let pool = dbConn env
-            isUser <- liftIO $ queryDB pool $ Query $
-                "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '" <> uName <> "');"
+            isUser <- liftIO $ queryDBsafe pool
+                (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
+                [uName]
             unless (fromOnly $ head isUser) (throwError UserNOTExists)
-            isPass <- liftIO $ queryDB pool $ Query $
-                "SELECT EXISTS (SELECT id FROM Users WHERE UserName = '"
-                <> uName <> "' AND Pass = md5('" <> uPass <> "'));"
+            isPass <- liftIO $ queryDBsafe pool
+                (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));")
+                (uName,uPass)
             unless (fromOnly $ head isPass) (throwError WrongPass)
-            _ <- liftIO $ execDB pool $ Query $
-                "UPDATE Users SET "
-                <> "Pass = md5('" <> uNewPass <> "') "
-                <> ", Token = md5('" <> makeHash (uName <> uNewPass) <> "') "
-                <> "WHERE UserName = '" <> uName <> "';"
-            u <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM Users WHERE UserName = '" <> uName <> "';"
+            _ <- liftIO $ execDBsafe pool 
+                (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
+                (uNewPass,makeHash (uName <> uNewPass),uName)
+            u <- liftIO $ queryDBsafe pool 
+                (Query "SELECT * FROM Users WHERE UserName = ? ;")
+                [uName]
             liftIO $ Logger.info (Logger.lConfig env) $ BS.toString $
                 "Change password for user: " <> uName
             return $ A.toJSON (u :: [User])
