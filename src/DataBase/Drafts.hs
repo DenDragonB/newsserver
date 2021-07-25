@@ -121,21 +121,30 @@ draftEdit param = do
                 (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
                 (did,author)
             unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
-            let header = fromMaybe "" $ getParam "header" param
-            let cat = fromMaybe "" $ getParam "category_id" param
-            let tags = fromMaybe "" $ getParam "tags_id" param
-            let cont = fromMaybe "" $ getParam "content" param
-            let mph = fromMaybe "" $ getParam "main_photo" param
-            let phs = fromMaybe "" $ getParam "photos" param
-            _ <- liftIO $ execDB pool $ Query $
-                "UPDATE Drafts SET Id = " <> did
-                <> addToUpdate "Header" header
-                <> addToUpdateNum "Category" cat
-                <> addToUpdateNumArray "Tags" tags
-                <> addToUpdate "Content" cont
-                <> addToUpdate "MainPhoto" mph
-                <> addToUpdateNumArray "Photos" phs
-                <> " WHERE Id = " <> did <> ";"
+            let header = getParam "header" param
+            let cat = getParam "category_id" param
+            let tags = getParam "tags_id" param
+            let cont = getParam "content" param
+            let mph = getParam "main_photo" param
+            let phs = getParam "photos" param
+            _ <- liftIO $ execDBsafe pool
+                (Query "WITH "
+                    <> "newData AS (SELECT CAST (? AS TEXT) as Header"
+                    <> ", CAST (? AS INT) as Category"
+                    <> ", CAST (ARRAY ? AS INT[]) as Tags"
+                    <> ", CAST (? AS TEXT) as Content"
+                    <> ", CAST (? AS TEXT) as MainPhoto"
+                    <> ", CAST (ARRAY ? AS TEXT[]) as Photos),"
+                    <> "oldData AS (SELECT id,Header,Category,Tags,Content,MainPhoto,Photos from Drafts WHERE id = ?)"
+                    <> "UPDATE Drafts SET "
+                    <> "Header = COALESCE ((SELECT Header from newData),(SELECT Header from oldData)),"
+                    <> "Category = COALESCE ((SELECT Category from newData),(SELECT Category from oldData)),"
+                    <> "Tags = COALESCE ((SELECT Tags from newData),(SELECT Tags from oldData)),"
+                    <> "Content = COALESCE ((SELECT Content from newData),(SELECT Content from oldData)),"
+                    <> "MainPhoto = COALESCE ((SELECT MainPhoto from newData),(SELECT MainPhoto from oldData)),"
+                    <> "Photos = COALESCE ((SELECT Photos from newData),(SELECT Photos from oldData))"
+                    <> "WHERE Id = (SELECT id from oldData);")
+                (header,cat,tags,cont,mph,phs,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Edit Draft id: " <> BS.toString did
             draft <- liftIO $ queryDBsafe pool
@@ -166,7 +175,9 @@ draftGet param = do
             when (null authors) (throwError AuthorNOTExists)
             let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
             draft <- liftIO $ queryDBsafe pool
-                (Query "SELECT * FROM Drafts WHERE Id = ? AND Author = ? ;")
+                (Query $ "SELECT * FROM Drafts WHERE Id = ? AND Author = ? "
+                    <> "ORDER BY RegDate "
+                    <> getLimitOffsetBS param <> ";")
                 (did,author)
             when (null draft) (throwError ObjectNOTExists)
             return $ A.toJSON (draft :: [Draft])

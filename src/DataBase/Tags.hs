@@ -117,14 +117,18 @@ tagGet param = do
     case admin of
         Just (True , _ ) -> do
             let pool = dbConn env
-            let tid = fromMaybe "" $ getParam "id" param
-            let tname = fromMaybe "" $ getParam "name" param
-            tag <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM Tags WHERE Id > 0 "
-                <> addFieldToQueryNumBS "Id" tid
-                <> addFieldToQueryBS "Tag" tname
-                <> getLimitOffsetBS param
-                <> ";"
+            let tid = getParam "id" param
+            let tname = getParam "name" param
+            tag <- liftIO $ queryDBsafe pool
+                (Query $ "WITH searchData AS (SELECT "
+                    <> " CAST (? as INT) AS sid "
+                    <> ", CAST (? as TEXT) AS stag ) "
+                    <> "SELECT id,tag FROM Tags,searchData WHERE"
+                    <> "(stag ISNULL OR stag=tag)"
+                    <> "AND (sid ISNULL OR sid=id)"
+                    <> "ORDER BY Tag "
+                    <> getLimitOffsetBS param <> ";")
+                (tid,tname)
             return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 

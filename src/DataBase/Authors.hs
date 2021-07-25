@@ -88,8 +88,8 @@ authorEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let uid = fromMaybe "" $ getParam "user_id" param
-            let about = fromMaybe "" $ getParam "about" param
+            let uid = getParam "user_id" param
+            let about = getParam "about" param
             let maid = getParam "id" param
             case maid of
                 Nothing -> throwError WrongQueryParameter
@@ -99,11 +99,15 @@ authorEdit param = do
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
                         [aid]
                     unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
-                    _ <- liftIO $ execDB pool $ Query $
-                        "UPDATE Authors SET Id = " <> aid
-                        <> addToUpdate "UserId" uid
-                        <> addToUpdate "About" about
-                        <> " WHERE Id = " <> aid <> ";"
+                    _ <- liftIO $ execDBsafe pool
+                        (Query "WITH "
+                            <> "newData AS (SELECT CAST (? AS INT) as userid, CAST (? AS TEXT) as about),"
+                            <> "oldData AS (SELECT id,userid,about from Authors WHERE id = ?)"
+                            <> "UPDATE Authors SET "
+                            <> "UserId = COALESCE ((SELECT userid from newData),(SELECT userid from oldData)),"
+                            <> "About = COALESCE ((SELECT about from newData),(SELECT about from oldData))"
+                            <> "WHERE Id = (SELECT id from oldData);")
+                        (uid,about,aid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit author id: " <> BS.toString aid
                     author <- liftIO $ queryDBsafe pool
@@ -126,14 +130,18 @@ authorGet param = do
     case admin of
         Just (_, True ) -> do
             let pool = dbConn env
-            let uid = fromMaybe "" $ getParam "user_id" param
-            let aid = fromMaybe "" $ getParam "id" param
-            author <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM Authors WHERE Id > 0 "
-                <> addFieldToQueryNumBS "Id" aid
-                <> addFieldToQueryNumBS "UserId" uid
-                <> getLimitOffsetBS param
-                <> ";"
+            let uid = getParam "user_id" param
+            let aid = getParam "id" param
+            author <- liftIO $ queryDBsafe pool
+                (Query $ "WITH searchData AS (SELECT "
+                    <> " CAST (? as INT) AS sid "
+                    <> ", CAST (? as INT) AS suserid ) "
+                    <> "SELECT id,userid,about FROM authors,searchData WHERE"
+                    <> "(suserid ISNULL OR suserid=userid)"
+                    <> "AND (sid ISNULL OR sid=id)"
+                    <> "ORDER BY id "
+                    <> getLimitOffsetBS param <> ";")
+                (aid,uid)
             return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 

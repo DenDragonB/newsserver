@@ -11,7 +11,8 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe, listToMaybe)
+import           Data.Maybe                         (fromMaybe, isNothing,
+                                                     listToMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           GHC.Generics
@@ -88,8 +89,8 @@ categoryEdit param = do
     case admin of
         Just (_, True ) -> do
             let mcid = getParam "id" param
-            let cname = fromMaybe "" $ getParam "name" param
-            let par = fromMaybe "0" $ getParam "parent_id" param
+            let cname = getParam "name" param
+            let par = getParam "parent_id" param
             case mcid of
                 Nothing -> throwError WrongQueryParameter
                 Just cid -> do
@@ -104,18 +105,23 @@ categoryEdit param = do
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [par]
                     unless (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectNOTExists)
-                    unless (par == "0" || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
+                    unless (isNothing par || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
                     when (maybe False fromOnly $ listToMaybe isCatName) (throwError ObjectExists)
 
-                    _ <- liftIO $ execDB pool $ Query $
-                        "UPDATE Categories SET Id = " <> cid
-                        <> addToUpdate "CatName" cname
-                        <> addToUpdateNum "Parent" par
-                        <> " WHERE Id = " <> cid <> ";"
+                    _ <- liftIO $ execDBsafe pool
+                        (Query "WITH "
+                            <> "newData AS (SELECT CAST (? AS TEXT) as CatName, CAST (? AS INT) as Parent),"
+                            <> "oldData AS (SELECT id,CatName,Parent from Categories WHERE id = ?)"
+                            <> "UPDATE Categories SET "
+                            <> "CatName = COALESCE ((SELECT CatName from newData),(SELECT CatName from oldData)),"
+                            <> "Parent = COALESCE ((SELECT Parent from newData),(SELECT Parent from oldData))"
+                            <> "WHERE Id = (SELECT id from oldData);")
+                        (cname,par,cid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit category id: " <> BS.toString cid
-                    cat <- liftIO $ queryDB pool $ Query $
-                        "SELECT * FROM Categories WHERE Id = " <> cid <> ";"
+                    cat <- liftIO $ queryDBsafe pool
+                        (Query "SELECT * FROM Categories WHERE Id = ?;")
+                        [cid]
                     return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 
@@ -133,16 +139,21 @@ categoryGet param = do
     case admin of
         Just (True , _ ) -> do
             let pool = dbConn env
-            let cid = fromMaybe "" $ getParam "id" param
-            let cname = fromMaybe "" $ getParam "name" param
-            let cpar = fromMaybe "" $ getParam "parent_id" param
-            cat <- liftIO $ queryDB pool $ Query $
-                "SELECT * FROM Categories WHERE Id > 0 "
-                <> addFieldToQueryNumBS "Id" cid
-                <> addFieldToQueryBS "CatName" cname
-                <> addFieldToQueryNumBS "Parent" cpar
-                <> getLimitOffsetBS param
-                <> ";"
+            let cid = getParam "id" param
+            let cname = getParam "name" param
+            let cpar = getParam "parent_id" param
+            cat <- liftIO $ queryDBsafe pool
+                (Query $ "WITH searchData AS (SELECT "
+                    <> " CAST (? as INT) AS sid "
+                    <> ", CAST (? as TEXT) AS sCatName "
+                    <> ", CAST (? as INT) AS sParent ) "
+                    <> "SELECT id,CatName,Parent FROM Categories,searchData WHERE"
+                    <> "(sid ISNULL OR sid=id)"
+                    <> "AND (sCatName ISNULL OR sCatName=CatName) "
+                    <> "AND (sParent ISNULL OR sParent=Parent)"
+                    <> "ORDER BY Parent,CatName,Id "
+                    <> getLimitOffsetBS param <> ";")
+                (cid,cname,cpar)
             return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 

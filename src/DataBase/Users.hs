@@ -76,14 +76,6 @@ makeHash :: BS.ByteString -> BS.ByteString
 makeHash bs = fromMaybe "" $ hashPassword bs $
     fromMaybe "" $ genSalt "$2b$" 6 "qsfvkpkvtnhtefhk"
 
-valUser :: User -> String
-valUser u = "'" <> firstName u
-    <> "','" <> lastName u <> "'"
-    <> ",'" <> avatar u <> "'"
-    <> ",'" <> userName u <> "'"
-    <> ",md5('" <> upass u <> "')"
-    <> ",md5('" <> (BS.toString . makeHash . BS.fromString) (userName u <> upass u) <> "')"
-
 userAdd ::
     ( MonadReader env m
     , HasDataBase env
@@ -102,11 +94,12 @@ userAdd param = do
     when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
     let us = user {token = (BS.toString . makeHash . BS.fromString) $
         userName user <> upass user}
-    _ <- liftIO $ execDB pool $ (Query . BS.fromString) $
-        "INSERT INTO Users "
-        <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
-        <> "VALUES ("
-        <> valUser user <> ", NOW ());"
+    _ <- liftIO $ execDBsafe pool 
+        (Query "INSERT INTO Users "
+            <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
+            <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
+        (firstName user, lastName user, avatar user, userName user, upass user,
+            (BS.toString . makeHash . BS.fromString) (userName user <> upass user))
     u <- liftIO $ queryDBsafe pool
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
         (userName user, firstName user, lastName user)
@@ -156,13 +149,18 @@ userGet param = do
             env <- ask
             let user = parseUser param
             let pool = dbConn env
-            u <- liftIO $ queryDB pool $ (Query . BS.fromString) $
-                "SELECT * FROM Users WHERE id>0 "
-                <> addFieldToQuery "UserName" (userName user)
-                <> addFieldToQuery "FirstName" (firstName user)
-                <> addFieldToQuery "LastName" (lastName user)
-                <> " ORDER BY UserName"
-                <> getLimitOffset param
+            u <- liftIO $ queryDBsafe pool 
+                (Query $ "WITH searchData AS (SELECT "
+                    <> " CAST (? as TEXT) AS sUserName "
+                    <> ", CAST (? as TEXT) AS sFirstName "
+                    <> ", CAST (? as TEXT) AS sLastName ) "
+                    <> "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
+                    <> "(sUserName ISNULL OR sUserName=UserName)"
+                    <> "AND (sFirstName ISNULL OR sFirstName=FirstName)"
+                    <> "AND (sLastName ISNULL OR sLastName=LastName)"            
+                    <> "ORDER BY UserName "
+                    <> getLimitOffsetBS param <> ";")          
+                (userName user,firstName user,lastName user)
             return $ A.toJSON (u :: [User])
 
 userDel ::
