@@ -88,19 +88,19 @@ userAdd param = do
     let user = parseUser param
     env <- ask
     let pool = dbConn env
-    oldUser <- liftIO $ queryDBsafe pool
+    oldUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
                 [userName user]
     when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
     let us = user {token = (BS.toString . makeHash . BS.fromString) $
         userName user <> upass user}
-    _ <- liftIO $ execDBsafe pool 
+    _ <- execWithExcept pool 
         (Query "INSERT INTO Users "
             <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
             <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
         (firstName user, lastName user, avatar user, userName user, upass user,
             (BS.toString . makeHash . BS.fromString) (userName user <> upass user))
-    u <- liftIO $ queryDBsafe pool
+    u <- queryWithExcept pool
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
         (userName user, firstName user, lastName user)
     liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
@@ -123,10 +123,10 @@ findToken param = do
         then return Nothing
         else do
             let pool = dbConn env
-            user <- liftIO $ queryDBsafe pool
+            user <- queryWithExcept pool
                     (Query "SELECT EXISTS (SELECT id FROM Users WHERE token = ? );")
                     [fromMaybe "" token]
-            adm <- liftIO $ queryDBsafe pool
+            adm <- queryWithExcept pool
                     (Query "SELECT Adm FROM Users WHERE token = ? ;")
                     [fromMaybe "" token]
             case adm of
@@ -149,7 +149,7 @@ userGet param = do
             env <- ask
             let user = parseUser param
             let pool = dbConn env
-            u <- liftIO $ queryDBsafe pool 
+            u <- queryWithExcept pool 
                 (Query $ "WITH searchData AS (SELECT "
                     <> " CAST (? as TEXT) AS sUserName "
                     <> ", CAST (? as TEXT) AS sFirstName "
@@ -180,7 +180,7 @@ userDel param = do
                 Just uid -> do
                     env <- ask
                     let pool = dbConn env
-                    _ <- liftIO $ execDBsafe pool
+                    _ <- execWithExcept pool
                         (Query "DELETE FROM Users WHERE id = ? ;")
                         [uid]
                     liftIO $ Logger.info (Logger.lConfig env) $
@@ -204,18 +204,18 @@ userNewPass param = do
     case sequence [mUserName,mPass,mNewPass] of
         Just [uName,uPass,uNewPass] -> do
             let pool = dbConn env
-            isUser <- liftIO $ queryDBsafe pool
+            isUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
                 [uName]
             unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
-            isPass <- liftIO $ queryDBsafe pool
+            isPass <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));")
                 (uName,uPass)
             unless (maybe False fromOnly $ listToMaybe isPass) (throwError WrongPass)
-            _ <- liftIO $ execDBsafe pool
+            _ <- execWithExcept pool
                 (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
                 (uNewPass,makeHash (uName <> uNewPass),uName)
-            u <- liftIO $ queryDBsafe pool
+            u <- queryWithExcept pool
                 (Query "SELECT * FROM Users WHERE UserName = ? ;")
                 [uName]
             liftIO $ Logger.info (Logger.lConfig env) $ BS.toString $

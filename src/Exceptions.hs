@@ -1,6 +1,8 @@
 module Exceptions where
 
 import           Network.HTTP.Types
+import           Control.Exception
+import           Data.Typeable
 
 data Errors
 -- for WEB
@@ -25,7 +27,8 @@ data Errors
 
 -- for snding files
     | Send String
-
+    deriving (Typeable)
+instance Exception Errors
 instance Show Errors where
     show UnknownRequest      = "Unknown Request"
     show NotFound            = "404 - Not found"

@@ -54,22 +54,22 @@ categoryAdd param = do
                 Nothing -> throwError WrongQueryParameter
                 Just name -> do
                     let pool = dbConn env
-                    isCat <- liftIO $ queryDBsafe pool
+                    isCat <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
                         [name]
-                    isPar <- liftIO $ queryDBsafe pool
+                    isPar <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [par]
                     when (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectExists)
                     unless (par == "0" || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
                     liftIO $ Logger.debug (Logger.lConfig env) $
                         "Try add category name: " <> BS.toString name <> "; parent: "<> BS.toString par
-                    _ <- liftIO $ execDBsafe pool
+                    _ <- execWithExcept pool
                         (Query "INSERT INTO Categories (CatName, Parent) VALUES (?,?);")
                         (name,par)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Add category name: " <> BS.toString name
-                    cat <- liftIO $ queryDBsafe pool
+                    cat <- queryWithExcept pool
                         (Query "SELECT * FROM Categories WHERE CatName = ? ;")
                         [name]
                     return $ A.toJSON (cat :: [Category])
@@ -95,20 +95,20 @@ categoryEdit param = do
                 Nothing -> throwError WrongQueryParameter
                 Just cid -> do
                     let pool = dbConn env
-                    isCat <- liftIO $ queryDBsafe pool
+                    isCat <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [cid]
-                    isCatName <- liftIO $ queryDBsafe pool
+                    isCatName <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
                         [cname]
-                    isPar <- liftIO $ queryDBsafe pool
+                    isPar <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [par]
                     unless (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectNOTExists)
                     unless (isNothing par || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
                     when (maybe False fromOnly $ listToMaybe isCatName) (throwError ObjectExists)
 
-                    _ <- liftIO $ execDBsafe pool
+                    _ <- execWithExcept pool
                         (Query "WITH "
                             <> "newData AS (SELECT CAST (? AS TEXT) as CatName, CAST (? AS INT) as Parent),"
                             <> "oldData AS (SELECT id,CatName,Parent from Categories WHERE id = ?)"
@@ -119,7 +119,7 @@ categoryEdit param = do
                         (cname,par,cid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit category id: " <> BS.toString cid
-                    cat <- liftIO $ queryDBsafe pool
+                    cat <- queryWithExcept pool
                         (Query "SELECT * FROM Categories WHERE Id = ?;")
                         [cid]
                     return $ A.toJSON (cat :: [Category])
@@ -142,7 +142,7 @@ categoryGet param = do
             let cid = getParam "id" param
             let cname = getParam "name" param
             let cpar = getParam "parent_id" param
-            cat <- liftIO $ queryDBsafe pool
+            cat <- queryWithExcept pool
                 (Query $ "WITH searchData AS (SELECT "
                     <> " CAST (? as INT) AS sid "
                     <> ", CAST (? as TEXT) AS sCatName "
@@ -175,15 +175,15 @@ categoryDelete param = do
                 Nothing -> throwError WrongQueryParameter
                 Just cid -> do
                     let pool = dbConn env
-                    isCat <- liftIO $ queryDBsafe pool
+                    isCat <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [cid]
-                    isHaveSub <- liftIO $ queryDBsafe pool
+                    isHaveSub <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Parent = ?);")
                         [cid]
                     unless (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectNOTExists)
                     when (maybe False fromOnly $ listToMaybe isHaveSub) (throwError CategoryWithSub)
-                    _ <- liftIO $ execDBsafe pool
+                    _ <- execWithExcept pool
                         (Query "DELETE FROM Categories WHERE Id = ?;")
                         [cid]
                     liftIO $ Logger.info (Logger.lConfig env) $

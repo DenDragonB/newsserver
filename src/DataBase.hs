@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE FlexibleContexts  #-}
 
 module DataBase where
 
@@ -8,6 +9,9 @@ import qualified Data.Aeson                       as A
 import           GHC.Generics
 
 import           Control.Monad.Reader
+import           Control.Monad.Except
+import          Control.Exception
+--import           Control.Monad.Catch
 import qualified Data.ByteString.Conversion       as BS
 import qualified Data.ByteString.UTF8             as BS
 import           Data.Int
@@ -18,6 +22,7 @@ import           Database.PostgreSQL.Simple
 import           Database.PostgreSQL.Simple.Types
 
 import qualified Logger
+import qualified Exceptions
 
 import           Data.Text.Encoding
 import           Data.Text.IO                     as TIO
@@ -90,59 +95,51 @@ getParam name = foldr (func name) Nothing
             then ini
             else pe
 
-addFieldToQuery :: String -> String -> String
-addFieldToQuery field val = if null val
-    then ""
-    else " AND " <> field <> " = '" <> val <> "'"
+queryWithExcept ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ,ToRow q, FromRow r) => DBPool -> Query -> q -> m [r]
+queryWithExcept pool query q = do
+    env <- ask
+    res <- liftIO $ try (queryDBsafe pool query q) -- :: MonadIOIO (Either SomeException [r])
+    case res of
+        Right out -> return out
+        Left err -> case fromException err of
+            Nothing -> do
+                liftIO . Logger.info (Logger.lConfig env) $ show err
+                throwError Exceptions.WrongQueryParameter
+            Just (SqlError _ _ msg _ _) -> do
+                liftIO . Logger.info (Logger.lConfig env)
+                    $ BS.toString msg
+                throwError Exceptions.WrongQueryParameter
 
-addFieldToQueryBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addFieldToQueryBS field val = if val == ""
-    then ""
-    else " AND " <> field <> " = '" <> val <> "'"
+execWithExcept ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ,ToRow q) => DBPool -> Query -> q -> m Int64
+execWithExcept pool query q = do
+    env <- ask
+    res <- liftIO $ try (execDBsafe pool query q) -- :: MonadIOIO (Either SomeException [r])
+    case res of
+        Right out -> return out
+        Left err -> case fromException err of
+            Nothing -> do
+                liftIO . Logger.info (Logger.lConfig env) $ show err
+                throwError Exceptions.WrongQueryParameter
+            Just (SqlError _ _ msg _ _) -> do
+                liftIO . Logger.info (Logger.lConfig env)
+                    $ BS.toString msg
+                throwError Exceptions.WrongQueryParameter
 
-addFieldToQueryNumBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addFieldToQueryNumBS field val = if val == ""
-    then ""
-    else " AND " <> field <> " = " <> val
-
-addFieldToQueryLaterBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addFieldToQueryLaterBS field val = if val == ""
-    then ""
-    else " AND " <> field <> " < '" <> val <> "'"
-
-addFieldToQueryGraterBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addFieldToQueryGraterBS field val = if val == ""
-    then ""
-    else " AND " <> field <> " > '" <> val <> "'"
-
-addFindTextToSelectBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addFindTextToSelectBS field val = if val == ""
-    then ""
-    else " AND strpos("<> field <> ",'" <> val <> "') > 0"
-
-addToUpdate :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addToUpdate field val = if val == ""
-    then ""
-    else ", " <> field <> " = '" <> val <> "'"
-
-addToUpdateNum :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addToUpdateNum field val = if val == ""
-    then ""
-    else ", " <> field <> " = " <> val
-
-addToUpdateNumArray :: BS.ByteString -> BS.ByteString -> BS.ByteString
-addToUpdateNumArray field val = if val == ""
-    then ""
-    else ", " <> field <> " = ARRAY" <> val
-
-addToUpdateNumArrayMap :: BS.ByteString -> [BS.ByteString] -> BS.ByteString
-addToUpdateNumArrayMap field vals = if null vals
-    then ""
-    else ", " <> field <>
-        " = ARRAY[" <> (BS.drop 1 . foldr (\v ini -> ini<>","<>v) "") vals <> "]"
-
-addToUpdateArrayMap :: BS.ByteString -> [BS.ByteString] -> BS.ByteString
-addToUpdateArrayMap field vals = if null vals
-    then ""
-    else ", " <> field <>
-        " = ARRAY[" <> (BS.drop 1 . foldr (\v ini -> ini<>",'"<>v<>"'") "") vals <> "]"
+makeArray :: BS.ByteString -> BS.ByteString
+makeArray = BS.fromString . map func . BS.toString where
+    func c = case c of
+        '[' -> '{'
+        ']' -> '}'
+        _ -> c

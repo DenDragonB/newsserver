@@ -54,21 +54,21 @@ authorAdd param = do
             case sequence [muid,mabout] of
                 Just [uid,about] -> do
                     let pool = dbConn env
-                    isUser <- liftIO $ queryDBsafe pool
+                    isUser <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
                         [uid]
 
                     unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
-                    isAuthor <- liftIO $ queryDBsafe pool
+                    isAuthor <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
                         [uid]
                     when (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectExists)
-                    _ <- liftIO $ execDBsafe pool
+                    _ <- execWithExcept pool
                         (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
                         (uid , about )
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Add author with user id: " <> BS.toString uid
-                    author <- liftIO $ queryDBsafe pool
+                    author <- queryWithExcept pool
                         (Query "SELECT * FROM Authors WHERE UserId = ? ;")
                         [uid]
                     return $ A.toJSON (author :: [Author])
@@ -95,11 +95,11 @@ authorEdit param = do
                 Nothing -> throwError WrongQueryParameter
                 Just aid -> do
                     let pool = dbConn env
-                    isAuthor <- liftIO $ queryDBsafe pool
+                    isAuthor <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
                         [aid]
                     unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
-                    _ <- liftIO $ execDBsafe pool
+                    _ <- execWithExcept pool
                         (Query "WITH "
                             <> "newData AS (SELECT CAST (? AS INT) as userid, CAST (? AS TEXT) as about),"
                             <> "oldData AS (SELECT id,userid,about from Authors WHERE id = ?)"
@@ -110,7 +110,7 @@ authorEdit param = do
                         (uid,about,aid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit author id: " <> BS.toString aid
-                    author <- liftIO $ queryDBsafe pool
+                    author <- queryWithExcept pool
                         (Query "SELECT * FROM Authors WHERE Id = ? ;")
                         [aid]
                     return $ A.toJSON (author :: [Author])
@@ -132,7 +132,7 @@ authorGet param = do
             let pool = dbConn env
             let uid = getParam "user_id" param
             let aid = getParam "id" param
-            author <- liftIO $ queryDBsafe pool
+            author <- queryWithExcept pool
                 (Query $ "WITH searchData AS (SELECT "
                     <> " CAST (? as INT) AS sid "
                     <> ", CAST (? as INT) AS suserid ) "
@@ -163,11 +163,11 @@ authorDelete param = do
                 Nothing -> throwError WrongQueryParameter
                 Just aid -> do
                     let pool = dbConn env
-                    isAuthor <- liftIO $ queryDBsafe pool
+                    isAuthor <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
                         [aid]
                     unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
-                    _ <- liftIO $ execDBsafe pool
+                    _ <- execWithExcept pool
                         (Query "DELETE FROM Authors WHERE Id = ? ;")
                         [aid]
                     liftIO $ Logger.info (Logger.lConfig env) $
