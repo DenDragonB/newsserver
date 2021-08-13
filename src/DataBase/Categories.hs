@@ -109,13 +109,10 @@ categoryEdit param = do
                     when (maybe False fromOnly $ listToMaybe isCatName) (throwError ObjectExists)
 
                     _ <- execWithExcept pool
-                        (Query "WITH "
-                            <> "newData AS (SELECT CAST (? AS TEXT) as CatName, CAST (? AS INT) as Parent),"
-                            <> "oldData AS (SELECT id,CatName,Parent from Categories WHERE id = ?)"
-                            <> "UPDATE Categories SET "
-                            <> "CatName = COALESCE ((SELECT CatName from newData),(SELECT CatName from oldData)),"
-                            <> "Parent = COALESCE ((SELECT Parent from newData),(SELECT Parent from oldData))"
-                            <> "WHERE Id = (SELECT id from oldData);")
+                        (Query "UPDATE Categories SET "
+                            <> "CatName = COALESCE (?, CatName),"
+                            <> "Parent = COALESCE (?, Parent )"
+                            <> "WHERE Id = ?;")
                         (cname,par,cid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit category id: " <> BS.toString cid

@@ -128,22 +128,14 @@ draftEdit param = do
             let mph = getParam "main_photo" param
             let phs = makeArray <$> getParam "photos" param
             _ <- execWithExcept pool
-                (Query "WITH "
-                    <> "newData AS (SELECT CAST (? AS TEXT) as Header"
-                    <> ", CAST (? AS INT) as Category"
-                    <> ", CAST (? AS INT[]) as Tags"
-                    <> ", CAST (? AS TEXT) as Content"
-                    <> ", CAST (? AS TEXT) as MainPhoto"
-                    <> ", CAST (? AS TEXT[]) as Photos),"
-                    <> "oldData AS (SELECT id,Header,Category,Tags,Content,MainPhoto,Photos from Drafts WHERE id = ?)"
-                    <> "UPDATE Drafts SET "
-                    <> "Header = COALESCE ((SELECT Header from newData),(SELECT Header from oldData)),"
-                    <> "Category = COALESCE ((SELECT Category from newData),(SELECT Category from oldData)),"
-                    <> "Tags = COALESCE ((SELECT Tags from newData),(SELECT Tags from oldData)),"
-                    <> "Content = COALESCE ((SELECT Content from newData),(SELECT Content from oldData)),"
-                    <> "MainPhoto = COALESCE ((SELECT MainPhoto from newData),(SELECT MainPhoto from oldData)),"
-                    <> "Photos = COALESCE ((SELECT Photos from newData),(SELECT Photos from oldData))"
-                    <> "WHERE Id = (SELECT id from oldData);")
+                (Query "UPDATE Drafts SET "
+                    <> "Header = COALESCE (?, Header ),"
+                    <> "Category = COALESCE (?, Category ),"
+                    <> "Tags = COALESCE (?, Tags ),"
+                    <> "Content = COALESCE (?, Content ),"
+                    <> "MainPhoto = COALESCE (?, MainPhoto ),"
+                    <> "Photos = COALESCE (?, Photos )"
+                    <> "WHERE Id = ?;")                    
                 (header,cat,tags,cont,mph,phs,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Edit Draft id: " <> BS.toString did

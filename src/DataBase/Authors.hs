@@ -100,13 +100,10 @@ authorEdit param = do
                         [aid]
                     unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
                     _ <- execWithExcept pool
-                        (Query "WITH "
-                            <> "newData AS (SELECT CAST (? AS INT) as userid, CAST (? AS TEXT) as about),"
-                            <> "oldData AS (SELECT id,userid,about from Authors WHERE id = ?)"
-                            <> "UPDATE Authors SET "
-                            <> "UserId = COALESCE ((SELECT userid from newData),(SELECT userid from oldData)),"
-                            <> "About = COALESCE ((SELECT about from newData),(SELECT about from oldData))"
-                            <> "WHERE Id = (SELECT id from oldData);")
+                        (Query "UPDATE Authors SET "
+                            <> "UserId = COALESCE (?,userid),"
+                            <> "About = COALESCE (?,about)"
+                            <> "WHERE Id = ?;")
                         (uid,about,aid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit author id: " <> BS.toString aid
