@@ -10,7 +10,7 @@ port = 8080
 host = "localhost"
 port = 5432
 user = "postgres"
-pass = "LionDragon40"
+pass = "advsfkd"
 dbname = "newsdb"
 
 # log settings
