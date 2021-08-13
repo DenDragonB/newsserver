@@ -23,16 +23,11 @@ import           Exceptions
 import           Logger
 
 data Category = Category
-    { cid     :: Int
-    , catName :: Text
-    , parent  :: Int
+    { id        :: Int
+    , name      :: Text
+    , parent_id :: Int
     } deriving (Show,Eq,Generic)
-instance A.ToJSON Category where
-    toJSON cat = A.object
-        [ "id"        A..= cid cat
-        , "name"      A..= catName cat
-        , "parent_id" A..= parent cat
-        ]
+instance A.ToJSON Category
 instance FromRow Category
 
 categoryAdd ::

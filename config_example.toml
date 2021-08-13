@@ -11,7 +11,7 @@ host = "localhost"
 port = 5432
 user = "postgres"
 pass = "LionDragon40"
-name = "newsdb"
+dbname = "newsdb"
 
 # log settings
 [logger]

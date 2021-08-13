@@ -14,42 +14,32 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe, listToMaybe,isNothing)
+import           Data.Maybe                         (fromMaybe, isNothing,
+                                                     listToMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8, encodeUtf8)
 import           Data.Time
 
 import           DataBase
 import qualified DataBase.Posts                     as DB
-import           DataBase.Users
+import qualified DataBase.Users
 import           Exceptions
 import           Logger
+import           Prelude                            hiding (id)
 
 data Draft = Draft
-    { did       :: Int
-    , newsId    :: Int
-    , header    :: Text
-    , newsDate  :: Day
-    , autorId   :: Int
-    , catId     :: Int
-    , tags      :: PGArray Int
-    , content   :: Text
-    , mainPhoto :: Text
-    , photos    :: PGArray Text
+    { id          :: Int
+    , post_id     :: Int
+    , header      :: Text
+    , reg_date    :: Day
+    , autor_id    :: Int
+    , category_id :: Int
+    , tags_id     :: PGArray Int
+    , content     :: Text
+    , main_photo  :: Text
+    , photos      :: PGArray Text
     } deriving (Show,Eq,Generic)
-instance A.ToJSON Draft where
-    toJSON draft = A.object
-        [ "id"          A..= did draft
-        , "post_id"     A..= newsId draft
-        , "header"      A..= header draft
-        , "reg_date"    A..= newsDate draft
-        , "author_id"   A..= autorId draft
-        , "category_id" A..= catId draft
-        , "tags_id"     A..= fromPGArray (tags draft)
-        , "content"     A..= content draft
-        , "main_photo"  A..= mainPhoto draft
-        , "photos"      A..= fromPGArray (photos draft)
-        ]
+instance A.ToJSON Draft
 instance FromRow Draft
 
 draftAdd ::
@@ -135,7 +125,7 @@ draftEdit param = do
                     <> "Content = COALESCE (?, Content ),"
                     <> "MainPhoto = COALESCE (?, MainPhoto ),"
                     <> "Photos = COALESCE (?, Photos )"
-                    <> "WHERE Id = ?;")                    
+                    <> "WHERE Id = ?;")
                 (header,cat,tags,cont,mph,phs,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Edit Draft id: " <> BS.toString did
@@ -237,7 +227,7 @@ draftPublish param = do
             let draft = fromMaybe emptyDraft $ listToMaybe (drafts :: [Draft])
             news <- queryWithExcept pool
                 (Query "SELECT Id FROM News WHERE Id = ? ;")
-                [newsId draft]
+                [post_id draft]
             if null news
                 then do
                     nids <- queryWithExcept pool
@@ -268,14 +258,14 @@ draftPublish param = do
 
 emptyDraft :: Draft
 emptyDraft = Draft
-    { did       = 0
-    , newsId    = 0
+    { id       = 0
+    , post_id    = 0
     , header    = ""
-    , newsDate  = ModifiedJulianDay 0
-    , autorId   = 0
-    , catId     = 0
-    , tags      = PGArray [0]
+    , reg_date  = ModifiedJulianDay 0
+    , autor_id   = 0
+    , category_id     = 0
+    , tags_id      = PGArray [0]
     , content   = ""
-    , mainPhoto =""
+    , main_photo =""
     , photos    = PGArray [""]
     }

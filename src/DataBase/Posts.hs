@@ -14,7 +14,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe,isNothing)
+import           Data.Maybe                         (fromMaybe, isNothing)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8, encodeUtf8)
 import           Data.Time
@@ -25,28 +25,17 @@ import           Exceptions
 import           Logger
 
 data News = News
-    { nid        :: Int
+    { id         :: Int
     , header     :: Text
-    , newsDate   :: Day
-    , authorName :: Text
-    , catName    :: Text
+    , reg_date   :: Day
+    , author     :: Text
+    , category   :: Text
     , tags       :: PGArray Text
     , content    :: Text
-    , mainPhoto  :: Text
+    , main_photo :: Text
     , photos     :: PGArray Text
     } deriving (Show,Eq,Generic)
-instance A.ToJSON News where
-    toJSON news = A.object
-        [ "id"          A..= nid news
-        , "header"      A..= header news
-        , "reg_date"    A..= newsDate news
-        , "author"   A..= authorName news
-        , "category" A..= catName news
-        , "tags"     A..= fromPGArray (tags news)
-        , "content"     A..= content news
-        , "main_photo"  A..= mainPhoto news
-        , "photos"      A..= fromPGArray (photos news)
-        ]
+instance A.ToJSON News
 instance FromRow News
 
 postGet ::
@@ -82,7 +71,7 @@ postGet param = do
                     <> ", CAST (? as DATE) AS screateGT "
                     <> ", CAST (? as TEXT) AS sauthorName "
                     <> ", CAST (" <> (if isNothing ntag then "?" else "ARRAY [?]") <> " as INT[]) AS stagOne "
-                    <> ", CAST (? as INT[]) AS stagsALL " 
+                    <> ", CAST (? as INT[]) AS stagsALL "
                     <> ", CAST (? as INT[]) AS stagsIN "
                     <> ", CAST (? as TEXT) AS sheader "
                     <> ", CAST (? as TEXT) AS scontent )"

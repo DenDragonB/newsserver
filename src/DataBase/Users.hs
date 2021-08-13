@@ -23,39 +23,31 @@ import           GHC.Generics
 import           DataBase
 import           Exceptions
 import           Logger
+import           Prelude                            hiding (id)
 
 data User = User
-    { uid       :: Int
-    , firstName :: String
-    , lastName  :: String
-    , avatar    :: String
-    , userName  :: String
-    , upass     :: String
-    , regDate   :: Day
-    , adm       :: Bool
-    , token     :: String
+    { id         :: Int
+    , first_name :: String
+    , last_name  :: String
+    , avatar     :: String
+    , name       :: String
+    , upass      :: String
+    , reg_date   :: Day
+    , adm        :: Bool
+    , token      :: String
     } deriving (Show,Eq,Generic)
-instance A.ToJSON User where
-    toJSON user = A.object
-        [ "id"         A..= uid user
-        , "name"       A..= userName user
-        , "first_name" A..= firstName user
-        , "last_name"  A..= lastName user
-        , "avatar"     A..= avatar user
-        , "reg_date"   A..= regDate user
-        , "token"      A..= token user
-        ]
+instance A.ToJSON User
 instance FromRow User
 
 emptyUser :: User
 emptyUser = User
-    { uid = 0
-    , firstName = ""
-    , lastName = ""
+    { id = 0
+    , first_name = ""
+    , last_name = ""
     , avatar = ""
-    , userName = ""
+    , name = ""
     , upass = ""
-    , regDate = ModifiedJulianDay 1
+    , reg_date = ModifiedJulianDay 1
     , adm = False
     , token = ""
     }
@@ -63,10 +55,10 @@ emptyUser = User
 parseUser :: [( BS.ByteString , Maybe BS.ByteString )] -> User
 parseUser = foldr func emptyUser where
     func (pn,pe) user = case pn of
-        "id"         -> user {uid = fromMaybe 0 (pe >>= BS.fromByteString)}
-        "last_name"  -> user {lastName = BS.toString $ fromMaybe "" pe}
-        "first_name" -> user {firstName = BS.toString $ fromMaybe "" pe}
-        "name"       -> user {userName = BS.toString $ fromMaybe "" pe}
+        "id"         -> user {id = fromMaybe 0 (pe >>= BS.fromByteString)}
+        "last_name"  -> user {last_name = BS.toString $ fromMaybe "" pe}
+        "first_name" -> user {first_name = BS.toString $ fromMaybe "" pe}
+        "name"       -> user {name = BS.toString $ fromMaybe "" pe}
         "avatar"     -> user {avatar = BS.toString $ fromMaybe "" pe}
         "pass"       -> user {upass = BS.toString $ makeHash $ fromMaybe "" pe}
         "token"      -> user {token = BS.toString $ fromMaybe "" pe}
@@ -90,20 +82,20 @@ userAdd param = do
     let pool = dbConn env
     oldUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-                [userName user]
+                [name user]
     when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
     let us = user {token = (BS.toString . makeHash . BS.fromString) $
-        userName user <> upass user}
-    _ <- execWithExcept pool 
+        name user <> upass user}
+    _ <- execWithExcept pool
         (Query "INSERT INTO Users "
             <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
             <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
-        (firstName user, lastName user, avatar user, userName user, upass user,
-            (BS.toString . makeHash . BS.fromString) (userName user <> upass user))
+        (first_name user, last_name user, avatar user, name user, upass user,
+            (BS.toString . makeHash . BS.fromString) (name user <> upass user))
     u <- queryWithExcept pool
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-        (userName user, firstName user, lastName user)
-    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> userName user
+        (name user, first_name user, last_name user)
+    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> name user
     return $ A.toJSON (u :: [User])
 
 findToken ::
@@ -149,7 +141,7 @@ userGet param = do
             env <- ask
             let user = parseUser param
             let pool = dbConn env
-            u <- queryWithExcept pool 
+            u <- queryWithExcept pool
                 (Query $ "WITH searchData AS (SELECT "
                     <> " CAST (? as TEXT) AS sUserName "
                     <> ", CAST (? as TEXT) AS sFirstName "
@@ -157,10 +149,10 @@ userGet param = do
                     <> "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
                     <> "(sUserName ISNULL OR sUserName=UserName)"
                     <> "AND (sFirstName ISNULL OR sFirstName=FirstName)"
-                    <> "AND (sLastName ISNULL OR sLastName=LastName)"            
+                    <> "AND (sLastName ISNULL OR sLastName=LastName)"
                     <> "ORDER BY UserName "
-                    <> getLimitOffsetBS param <> ";")          
-                (userName user,firstName user,lastName user)
+                    <> getLimitOffsetBS param <> ";")
+                (name user,first_name user,last_name user)
             return $ A.toJSON (u :: [User])
 
 userDel ::

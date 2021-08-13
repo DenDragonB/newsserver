@@ -1,16 +1,16 @@
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE FlexibleContexts  #-}
 
 module DataBase where
 
 import qualified Data.Aeson                       as A
 import           GHC.Generics
 
-import           Control.Monad.Reader
+import           Control.Exception
 import           Control.Monad.Except
-import          Control.Exception
+import           Control.Monad.Reader
 --import           Control.Monad.Catch
 import qualified Data.ByteString.Conversion       as BS
 import qualified Data.ByteString.UTF8             as BS
@@ -21,22 +21,25 @@ import           Data.Pool
 import           Database.PostgreSQL.Simple
 import           Database.PostgreSQL.Simple.Types
 
-import qualified Logger
 import qualified Exceptions
+import qualified Logger
 
 import           Data.Text.Encoding
 import           Data.Text.IO                     as TIO
 
 data Config = Config
-    { host :: String
-    , port :: Int
-    , name :: String
-    , user :: String
-    , pass :: String
+    { host   :: String
+    , port   :: Int
+    , dbname :: String
+    , user   :: String
+    , pass   :: String
     } deriving (Show,Eq,Generic)
 instance A.FromJSON Config
 
 type DBPool = Pool Connection
+
+instance (A.ToJSON a) => A.ToJSON (PGArray a) where
+    toJSON = A.toJSONList . fromPGArray
 
 class HasDataBase env where
     dbConn :: env -> DBPool
@@ -55,7 +58,7 @@ instance MyDatabase IO where
                 , connectPort = toEnum port
                 , connectUser = user
                 , connectPassword = pass
-                , connectDatabase = name
+                , connectDatabase = dbname
                 }
         createPool
             (connect cInfo)
@@ -142,4 +145,4 @@ makeArray = BS.fromString . map func . BS.toString where
     func c = case c of
         '[' -> '{'
         ']' -> '}'
-        _ -> c
+        _   -> c

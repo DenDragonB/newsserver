@@ -22,16 +22,11 @@ import           Exceptions
 import           Logger
 
 data Author = Author
-    { aid    :: Int
-    , userId :: Int
-    , about  :: Text
+    { id      :: Int
+    , user_id :: Int
+    , about   :: Text
     } deriving (Show,Eq,Generic)
-instance A.ToJSON Author where
-    toJSON author = A.object
-        [ "id"         A..= aid author
-        , "user_id"    A..= userId author
-        , "about"      A..= about author
-        ]
+instance A.ToJSON Author
 instance FromRow Author
 
 authorAdd ::

@@ -22,14 +22,10 @@ import           Exceptions
 import           Logger
 
 data Tag = Tag
-    { tid     :: Int
-    , tagName :: Text
+    { id   :: Int
+    , name :: Text
     } deriving (Show,Eq,Generic)
-instance A.ToJSON Tag where
-    toJSON tag = A.object
-        [ "id"        A..= tid tag
-        , "name"      A..= tagName tag
-        ]
+instance A.ToJSON Tag
 instance FromRow Tag
 
 tagAdd ::
