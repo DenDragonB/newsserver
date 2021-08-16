@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3ce8eed71a3e7e592b0cef8c4ce176337e946ae97717f8a1080244dc58499aaa
+-- hash: 2a67631bae9c0b86659f7f694f4aa886c231866384cbb08c324031ebb97cd96e
 
 name:           newsserver
 version:        0.1.0.0
@@ -69,7 +69,7 @@ executable newsserver-exe
       Paths_newsserver
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -Werror
   build-depends:
       aeson
     , base >=4.7 && <5

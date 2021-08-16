@@ -1,28 +1,24 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module Main where
 
-import qualified Data.Aeson as Aeson
-import qualified Data.Text  as T
-import qualified Text.Toml  as TOML
+import qualified Data.Aeson   as Aeson
+import qualified Data.Text    as T
+import qualified Text.Toml    as TOML
 
 import qualified DataBase
+import           GHC.Generics
 import qualified Logger
 import qualified Web
 
-
 data Config = Config
-    { logConfig :: Logger.Config
-    , dbConfig  :: DataBase.Config
-    , webConfig :: Web.Config
-    } deriving (Show,Eq)
-instance Aeson.FromJSON Config where
-    parseJSON = Aeson.withObject "FromJSON Main.Config" $ \o ->
-        Config  <$> o Aeson..: "logger"
-                <*> o Aeson..: "database"
-                <*> o Aeson..: "server"
-
+    { logger   :: Logger.Config
+    , database :: DataBase.Config
+    , server   :: Web.Config
+    } deriving (Show,Eq,Generic)
+instance Aeson.FromJSON Config
 
 main :: IO ()
 main = do
@@ -36,5 +32,5 @@ main = do
             case conf of
                 Left err -> fail err
                 Right Config {..} -> do
-                    pool <- DataBase.openPool dbConfig
-                    Web.start $ Web.Env webConfig logConfig pool
+                    pool <- DataBase.openPool database
+                    Web.start $ Web.Env server logger pool

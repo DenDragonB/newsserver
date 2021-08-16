@@ -47,26 +47,26 @@ categoryAdd param = do
             let par = fromMaybe "0" $ getParam "parent_id" param
             case mname of
                 Nothing -> throwError WrongQueryParameter
-                Just name -> do
+                Just catName -> do
                     let pool = dbConn env
                     isCat <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
-                        [name]
+                        [catName]
                     isPar <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [par]
                     when (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectExists)
                     unless (par == "0" || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
                     liftIO $ Logger.debug (Logger.lConfig env) $
-                        "Try add category name: " <> BS.toString name <> "; parent: "<> BS.toString par
+                        "Try add category name: " <> BS.toString catName <> "; parent: "<> BS.toString par
                     _ <- execWithExcept pool
                         (Query "INSERT INTO Categories (CatName, Parent) VALUES (?,?);")
-                        (name,par)
+                        (catName,par)
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add category name: " <> BS.toString name
+                        "Add category name: " <> BS.toString catName
                     cat <- queryWithExcept pool
                         (Query "SELECT * FROM Categories WHERE CatName = ? ;")
-                        [name]
+                        [catName]
                     return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 

@@ -52,6 +52,6 @@ instance Show Errors where
 
 errorCode :: Errors -> Status
 errorCode err = case err of
-    Send fileName -> status200
+    Send _ -> status200
     NotFound      -> status404
     _             -> status403

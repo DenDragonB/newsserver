@@ -9,7 +9,6 @@ import qualified Data.Aeson                   as A
 import qualified Data.Aeson.Encoding.Internal as A
 import qualified Data.ByteString.Lazy.UTF8    as BSLazy
 import qualified Data.ByteString.UTF8         as BS
-import           Data.Word
 import           GHC.Generics
 import           Network.HTTP.Types
 import           Network.Wai
@@ -40,7 +39,7 @@ data Environment = Env
 instance DataBase.HasDataBase Environment where
     dbConn (Env _ _ pool) = pool
 instance Logger.HasLogger Environment where
-    lConfig (Env _ log _) = log
+    lConfig (Env _ clog _) = clog
 
 sConfig :: Environment -> Config
 sConfig (Env serv _ _) = serv
@@ -51,9 +50,9 @@ webRun = runReaderT
 start' :: ReaderT Environment IO ()
 start' = do
     env <- ask
-    let log = Logger.lConfig env
+    let clog = Logger.lConfig env
     let p = (port . sConfig) env
-    Logger.info log $ "Start server at port " <> show p
+    Logger.info clog $ "Start server at port " <> show p
     lift $ run p $ app env
 
 start :: Environment -> IO ()

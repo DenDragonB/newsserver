@@ -11,7 +11,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe, listToMaybe)
+import           Data.Maybe                         (listToMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           GHC.Generics
@@ -47,7 +47,7 @@ authorAdd param = do
             let muid = getParam "user_id" param
             let mabout = getParam "about" param
             case sequence [muid,mabout] of
-                Just [uid,about] -> do
+                Just [uid,queryAbout] -> do
                     let pool = dbConn env
                     isUser <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
@@ -60,7 +60,7 @@ authorAdd param = do
                     when (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectExists)
                     _ <- execWithExcept pool
                         (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
-                        (uid , about )
+                        (uid , queryAbout )
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Add author with user id: " <> BS.toString uid
                     author <- queryWithExcept pool
@@ -84,7 +84,7 @@ authorEdit param = do
     case admin of
         Just (_, True ) -> do
             let uid = getParam "user_id" param
-            let about = getParam "about" param
+            let queryAbout = getParam "about" param
             let maid = getParam "id" param
             case maid of
                 Nothing -> throwError WrongQueryParameter
@@ -99,7 +99,7 @@ authorEdit param = do
                             <> "UserId = COALESCE (?,userid),"
                             <> "About = COALESCE (?,about)"
                             <> "WHERE Id = ?;")
-                        (uid,about,aid)
+                        (uid,queryAbout,aid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit author id: " <> BS.toString aid
                     author <- queryWithExcept pool

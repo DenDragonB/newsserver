@@ -14,15 +14,13 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe, isNothing,
-                                                     listToMaybe)
+import           Data.Maybe                         (fromMaybe, listToMaybe)
 import           Data.Text                          (Text)
-import           Data.Text.Encoding                 (decodeUtf8, encodeUtf8)
+import           Data.Text.Encoding                 (decodeUtf8)
 import           Data.Time
 
 import           DataBase
 import qualified DataBase.Posts                     as DB
-import qualified DataBase.Users
 import           Exceptions
 import           Logger
 import           Prelude                            hiding (id)
@@ -65,7 +63,7 @@ draftAdd param = do
                     let mheader = getParam "header" param
                     let mcat = getParam "category_id" param
                     case sequence [mheader,mcat] of
-                        Just [header,cat] -> do
+                        Just [queryHeader,cat] -> do
                             let tags = fromMaybe "[]" $ getParam "tags_id" param
                             let cont = fromMaybe "" $ getParam "content" param
                             let mph = fromMaybe "" $ getParam "main_photo" param
@@ -74,10 +72,10 @@ draftAdd param = do
                                 (Query "INSERT INTO Drafts "
                                     <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
                                     <> " VALUES ( ?,NOW(),0,?,?, ARRAY ?,?,?, ARRAY ?) RETURNING Id;")
-                                (header, fromOnly author,
+                                (queryHeader, fromOnly author,
                                 cat,tags,cont,mph,phs)
                             liftIO $ Logger.info (Logger.lConfig env) $
-                                "Add Draft: " <> BS.toString header
+                                "Add Draft: " <> BS.toString queryHeader
                             draft <- queryWithExcept pool
                                 (Query "SELECT * FROM Drafts WHERE Id = ? ;")
                                 $ fromOnly <$> (dids :: [Only Int])
@@ -111,7 +109,7 @@ draftEdit param = do
                 (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
                 (did,author)
             unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
-            let header = getParam "header" param
+            let queryHeader = getParam "header" param
             let cat = getParam "category_id" param
             let tags = makeArray <$> getParam "tags_id" param
             let cont = getParam "content" param
@@ -126,7 +124,7 @@ draftEdit param = do
                     <> "MainPhoto = COALESCE (?, MainPhoto ),"
                     <> "Photos = COALESCE (?, Photos )"
                     <> "WHERE Id = ?;")
-                (header,cat,tags,cont,mph,phs,did)
+                (queryHeader,cat,tags,cont,mph,phs,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Edit Draft id: " <> BS.toString did
             draft <- queryWithExcept pool

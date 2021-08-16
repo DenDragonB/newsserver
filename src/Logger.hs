@@ -5,7 +5,6 @@
 module Logger where
 
 import qualified Data.Aeson           as A
-import qualified Data.Text            as T
 import           Data.Time.Clock
 import           GHC.Generics
 import           Prelude              hiding (error, log)

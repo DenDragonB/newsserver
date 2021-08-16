@@ -5,27 +5,21 @@
 
 module DataBase where
 
-import qualified Data.Aeson                       as A
+import qualified Data.Aeson                 as A
 import           GHC.Generics
 
 import           Control.Exception
 import           Control.Monad.Except
 import           Control.Monad.Reader
---import           Control.Monad.Catch
-import qualified Data.ByteString.Conversion       as BS
-import qualified Data.ByteString.UTF8             as BS
+import qualified Data.ByteString.Conversion as BS
+import qualified Data.ByteString.UTF8       as BS
 import           Data.Int
-import           Data.List
 import           Data.Maybe
 import           Data.Pool
 import           Database.PostgreSQL.Simple
-import           Database.PostgreSQL.Simple.Types
 
 import qualified Exceptions
 import qualified Logger
-
-import           Data.Text.Encoding
-import           Data.Text.IO                     as TIO
 
 data Config = Config
     { host   :: String
@@ -37,9 +31,6 @@ data Config = Config
 instance A.FromJSON Config
 
 type DBPool = Pool Connection
-
-instance (A.ToJSON a) => A.ToJSON (PGArray a) where
-    toJSON = A.toJSONList . fromPGArray
 
 class HasDataBase env where
     dbConn :: env -> DBPool
@@ -94,7 +85,7 @@ getLimitOffsetBS param = limit <> offset
 getParam :: BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> Maybe BS.ByteString
 getParam name = foldr (func name) Nothing
     where
-        func name (pn,pe) ini = if pn /= name
+        func nm (pn,pe) ini = if pn /= nm
             then ini
             else pe
 
@@ -105,9 +96,9 @@ queryWithExcept ::
     , MonadError Exceptions.Errors m
     , MonadIO m
     ,ToRow q, FromRow r) => DBPool -> Query -> q -> m [r]
-queryWithExcept pool query q = do
+queryWithExcept pool querystring q = do
     env <- ask
-    res <- liftIO $ try (queryDBsafe pool query q) -- :: MonadIOIO (Either SomeException [r])
+    res <- liftIO $ try (queryDBsafe pool querystring q)
     case res of
         Right out -> return out
         Left err -> case fromException err of
@@ -126,9 +117,9 @@ execWithExcept ::
     , MonadError Exceptions.Errors m
     , MonadIO m
     ,ToRow q) => DBPool -> Query -> q -> m Int64
-execWithExcept pool query q = do
+execWithExcept pool querystring q = do
     env <- ask
-    res <- liftIO $ try (execDBsafe pool query q) -- :: MonadIOIO (Either SomeException [r])
+    res <- liftIO $ try (execDBsafe pool querystring q) -- :: MonadIOIO (Either SomeException [r])
     case res of
         Right out -> return out
         Left err -> case fromException err of

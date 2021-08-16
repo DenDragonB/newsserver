@@ -11,7 +11,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe, listToMaybe)
+import           Data.Maybe                         (listToMaybe)
 import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           GHC.Generics
@@ -44,20 +44,20 @@ tagAdd param = do
             let mname = getParam "name" param
             case mname of
                 Nothing -> throwError WrongQueryParameter
-                Just name -> do
+                Just tagname -> do
                     let pool = dbConn env
                     isTag <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ?);")
-                        [name]
+                        [tagname]
                     when (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectExists)
                     _ <- execWithExcept pool
                         (Query "INSERT INTO Tags (Tag) VALUES (?);")
-                        [name]
+                        [tagname]
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Tag: " <> BS.toString name
+                        "Add Tag: " <> BS.toString tagname
                     tag <- queryWithExcept pool
                         (Query "SELECT * FROM Tags WHERE Tag = ? ;")
-                        [name]
+                        [tagname]
                     return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 

@@ -16,11 +16,9 @@ import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (fromMaybe, isNothing)
 import           Data.Text                          (Text)
-import           Data.Text.Encoding                 (decodeUtf8, encodeUtf8)
 import           Data.Time
 
 import           DataBase
-import           DataBase.Users
 import           Exceptions
 import           Logger
 
@@ -38,6 +36,9 @@ data News = News
 instance A.ToJSON News
 instance FromRow News
 
+instance (A.ToJSON a) => A.ToJSON (PGArray a) where
+    toJSON = A.toJSONList . fromPGArray
+    
 postGet ::
     ( MonadReader env m
     , HasDataBase env
@@ -50,7 +51,7 @@ postGet param = do
     env <- ask
     let mtoken = getParam "token" param
     case sequence [mtoken] of
-        Just [token] -> do
+        Just _ -> do
             let pool = dbConn env
             let nsort = fromMaybe "" $ getParam "sort_by" param
             let nid = getParam "id" param

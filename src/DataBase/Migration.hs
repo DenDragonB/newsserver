@@ -11,7 +11,6 @@ import           System.Directory                 (listDirectory)
 import qualified System.IO                        as IO
 
 import           DataBase
-import           Logger
 
 migrateDB :: DBPool -> IO ()
 migrateDB pool = do

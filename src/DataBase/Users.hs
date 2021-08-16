@@ -5,7 +5,6 @@
 module DataBase.Users where
 
 import           Database.PostgreSQL.Simple
-import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
 import           Control.Monad.Except
@@ -15,7 +14,6 @@ import qualified Data.Aeson                         as A
 import qualified Data.ByteString.Conversion         as BS
 import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe
-import           Data.Text                          (Text)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           Data.Time
 import           GHC.Generics
@@ -54,15 +52,15 @@ emptyUser = User
 
 parseUser :: [( BS.ByteString , Maybe BS.ByteString )] -> User
 parseUser = foldr func emptyUser where
-    func (pn,pe) user = case pn of
-        "id"         -> user {id = fromMaybe 0 (pe >>= BS.fromByteString)}
-        "last_name"  -> user {last_name = BS.toString $ fromMaybe "" pe}
-        "first_name" -> user {first_name = BS.toString $ fromMaybe "" pe}
-        "name"       -> user {name = BS.toString $ fromMaybe "" pe}
-        "avatar"     -> user {avatar = BS.toString $ fromMaybe "" pe}
-        "pass"       -> user {upass = BS.toString $ makeHash $ fromMaybe "" pe}
-        "token"      -> user {token = BS.toString $ fromMaybe "" pe}
-        _            -> user
+    func (pn,pe) puser = case pn of
+        "id"         -> puser {id = fromMaybe 0 (pe >>= BS.fromByteString)}
+        "last_name"  -> puser {last_name = BS.toString $ fromMaybe "" pe}
+        "first_name" -> puser {first_name = BS.toString $ fromMaybe "" pe}
+        "name"       -> puser {name = BS.toString $ fromMaybe "" pe}
+        "avatar"     -> puser {avatar = BS.toString $ fromMaybe "" pe}
+        "pass"       -> puser {upass = BS.toString $ makeHash $ fromMaybe "" pe}
+        "token"      -> puser {token = BS.toString $ fromMaybe "" pe}
+        _            -> puser
 
 makeHash :: BS.ByteString -> BS.ByteString
 makeHash bs = fromMaybe "" $ hashPassword bs $
@@ -77,25 +75,23 @@ userAdd ::
     ) => [( BS.ByteString , Maybe BS.ByteString )]
     -> m A.Value
 userAdd param = do
-    let user = parseUser param
+    let userToAdd = parseUser param
     env <- ask
     let pool = dbConn env
     oldUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-                [name user]
+                [name userToAdd]
     when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
-    let us = user {token = (BS.toString . makeHash . BS.fromString) $
-        name user <> upass user}
     _ <- execWithExcept pool
         (Query "INSERT INTO Users "
             <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
             <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
-        (first_name user, last_name user, avatar user, name user, upass user,
-            (BS.toString . makeHash . BS.fromString) (name user <> upass user))
+        (first_name userToAdd, last_name userToAdd, avatar userToAdd, name userToAdd, upass userToAdd,
+            (BS.toString . makeHash . BS.fromString) (name userToAdd <> upass userToAdd))
     u <- queryWithExcept pool
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-        (name user, first_name user, last_name user)
-    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> name user
+        (name userToAdd, first_name userToAdd, last_name userToAdd)
+    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> name userToAdd
     return $ A.toJSON (u :: [User])
 
 findToken ::
@@ -108,22 +104,22 @@ findToken ::
     -> m (Maybe (Bool,Bool))
 findToken param = do
     env <- ask
-    let token = getParam "token" param
+    let queryToken = getParam "token" param
     liftIO $ Logger.debug (Logger.lConfig env) $
-                        "Request from user with token: " <> show token
-    if isNothing token
+                        "Request from user with token: " <> show queryToken
+    if isNothing queryToken
         then return Nothing
         else do
             let pool = dbConn env
-            user <- queryWithExcept pool
+            userExist <- queryWithExcept pool
                     (Query "SELECT EXISTS (SELECT id FROM Users WHERE token = ? );")
-                    [fromMaybe "" token]
-            adm <- queryWithExcept pool
+                    [fromMaybe "" queryToken]
+            admExist <- queryWithExcept pool
                     (Query "SELECT Adm FROM Users WHERE token = ? ;")
-                    [fromMaybe "" token]
-            case adm of
-                [] -> return $ Just ( maybe False fromOnly $ listToMaybe user , False)
-                _  -> return $ Just ( maybe False fromOnly $ listToMaybe user , maybe False fromOnly $ listToMaybe adm)
+                    [fromMaybe "" queryToken]
+            case admExist of
+                [] -> return $ Just ( maybe False fromOnly $ listToMaybe userExist , False)
+                _  -> return $ Just ( maybe False fromOnly $ listToMaybe userExist , maybe False fromOnly $ listToMaybe admExist)
 
 userGet ::
     ( MonadReader env m
@@ -134,12 +130,12 @@ userGet ::
     ) => [( BS.ByteString , Maybe BS.ByteString )]
     -> m A.Value
 userGet param = do
-    token <- findToken param
-    if isNothing token
+    queryToken <- findToken param
+    if isNothing queryToken
         then throwError NotFound
         else do
             env <- ask
-            let user = parseUser param
+            let queryUser = parseUser param
             let pool = dbConn env
             u <- queryWithExcept pool
                 (Query $ "WITH searchData AS (SELECT "
@@ -152,7 +148,7 @@ userGet param = do
                     <> "AND (sLastName ISNULL OR sLastName=LastName)"
                     <> "ORDER BY UserName "
                     <> getLimitOffsetBS param <> ";")
-                (name user,first_name user,last_name user)
+                (name queryUser,first_name queryUser,last_name queryUser)
             return $ A.toJSON (u :: [User])
 
 userDel ::
