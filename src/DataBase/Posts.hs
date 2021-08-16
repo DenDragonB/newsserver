@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module DataBase.Posts where
 
@@ -21,24 +22,46 @@ import           Data.Time
 import           DataBase
 import           Exceptions
 import           Logger
+import           Prelude                            hiding (id)
 
 data News = News
+    { dbid         :: Int
+    , dbheader     :: Text
+    , dbreg_date   :: Day
+    , dbauthor     :: Text
+    , dbcategory   :: Text
+    , dbtags       :: PGArray Text
+    , dbcontent    :: Text
+    , dbmain_photo :: Text
+    , dbphotos     :: PGArray Text
+    } deriving (Show,Eq,Generic)
+instance FromRow News
+
+data NewsJSON = NewsJSON
     { id         :: Int
     , header     :: Text
     , reg_date   :: Day
     , author     :: Text
     , category   :: Text
-    , tags       :: PGArray Text
+    , tags       :: [Text]
     , content    :: Text
     , main_photo :: Text
-    , photos     :: PGArray Text
+    , photos     :: [Text]
     } deriving (Show,Eq,Generic)
-instance A.ToJSON News
-instance FromRow News
+instance A.ToJSON NewsJSON
 
-instance (A.ToJSON a) => A.ToJSON (PGArray a) where
-    toJSON = A.toJSONList . fromPGArray
-    
+newsToJSON :: News -> NewsJSON
+newsToJSON News {..} = NewsJSON
+    dbid
+    dbheader
+    dbreg_date
+    dbauthor
+    dbcategory
+    (fromPGArray dbtags)
+    dbcontent
+    dbmain_photo
+    (fromPGArray dbphotos)
+
 postGet ::
     ( MonadReader env m
     , HasDataBase env
@@ -106,7 +129,7 @@ postGet param = do
                     <> getLimitOffsetBS param
                     <> ";")
                 (nid,ndate,ndateLT,ndateGT,nauthor,ntag,ntagAll,ntagIn,nheader,ncont)
-            return $ A.toJSON (news :: [News])
+            return $ A.toJSON (newsToJSON <$> news)
         _ -> throwError NotFound
 
 addSortBy :: BS.ByteString -> BS.ByteString

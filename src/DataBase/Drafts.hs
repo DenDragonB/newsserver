@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module DataBase.Drafts where
 
@@ -26,19 +27,45 @@ import           Logger
 import           Prelude                            hiding (id)
 
 data Draft = Draft
+    { dbid          :: Int
+    , dbpost_id     :: Int
+    , dbheader      :: Text
+    , dbreg_date    :: Day
+    , dbautor_id    :: Int
+    , dbcategory_id :: Int
+    , dbtags_id     :: PGArray Int
+    , dbcontent     :: Text
+    , dbmain_photo  :: Text
+    , dbphotos      :: PGArray Text
+    } deriving (Show,Eq,Generic)
+instance FromRow Draft
+
+data DraftJSON = DraftJSON
     { id          :: Int
     , post_id     :: Int
     , header      :: Text
     , reg_date    :: Day
     , autor_id    :: Int
     , category_id :: Int
-    , tags_id     :: PGArray Int
+    , tags_id     :: [Int]
     , content     :: Text
     , main_photo  :: Text
-    , photos      :: PGArray Text
+    , photos      :: [Text]
     } deriving (Show,Eq,Generic)
-instance A.ToJSON Draft
-instance FromRow Draft
+instance A.ToJSON DraftJSON
+
+draftToJSON :: Draft -> DraftJSON
+draftToJSON Draft {..} = DraftJSON
+    dbid
+    dbpost_id
+    dbheader
+    dbreg_date
+    dbautor_id
+    dbcategory_id
+    (fromPGArray dbtags_id)
+    dbcontent
+    dbmain_photo
+    (fromPGArray dbphotos)
 
 draftAdd ::
     ( MonadReader env m
@@ -79,7 +106,7 @@ draftAdd param = do
                             draft <- queryWithExcept pool
                                 (Query "SELECT * FROM Drafts WHERE Id = ? ;")
                                 $ fromOnly <$> (dids :: [Only Int])
-                            return $ A.toJSON (draft :: [Draft])
+                            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
                         _ -> throwError WrongQueryParameter
                 _ -> throwError AuthorNOTExists
         _ -> throwError NotFound
@@ -130,7 +157,7 @@ draftEdit param = do
             draft <- queryWithExcept pool
                 (Query "SELECT * FROM Drafts WHERE Id = ? ;")
                 [did]
-            return $ A.toJSON (draft :: [Draft])
+            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
         _ -> throwError NotFound
 
 draftGet ::
@@ -160,7 +187,7 @@ draftGet param = do
                     <> getLimitOffsetBS param <> ";")
                 (did,author)
             when (null draft) (throwError ObjectNOTExists)
-            return $ A.toJSON (draft :: [Draft])
+            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
         _ -> throwError NotFound
 
 draftDelete ::
@@ -225,7 +252,7 @@ draftPublish param = do
             let draft = fromMaybe emptyDraft $ listToMaybe (drafts :: [Draft])
             news <- queryWithExcept pool
                 (Query "SELECT Id FROM News WHERE Id = ? ;")
-                [post_id draft]
+                [dbpost_id draft]
             if null news
                 then do
                     nids <- queryWithExcept pool
@@ -256,14 +283,14 @@ draftPublish param = do
 
 emptyDraft :: Draft
 emptyDraft = Draft
-    { id       = 0
-    , post_id    = 0
-    , header    = ""
-    , reg_date  = ModifiedJulianDay 0
-    , autor_id   = 0
-    , category_id     = 0
-    , tags_id      = PGArray [0]
-    , content   = ""
-    , main_photo =""
-    , photos    = PGArray [""]
+    { dbid       = 0
+    , dbpost_id    = 0
+    , dbheader    = ""
+    , dbreg_date  = ModifiedJulianDay 0
+    , dbautor_id   = 0
+    , dbcategory_id     = 0
+    , dbtags_id      = PGArray [0]
+    , dbcontent   = ""
+    , dbmain_photo =""
+    , dbphotos    = PGArray [""]
     }
