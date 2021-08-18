@@ -1,8 +1,8 @@
 module Exceptions where
 
-import           Network.HTTP.Types
 import           Control.Exception
 import           Data.Typeable
+import           Network.HTTP.Types
 
 data Errors
 -- for WEB
@@ -10,6 +10,7 @@ data Errors
     | NotFound
 -- for Queries
     | WrongQueryParameter
+    | ParametrParseError String
     | ObjectExists    -- The object already exists
     | ObjectNOTExists -- The object is not exists on db
 -- for Users
@@ -30,28 +31,28 @@ data Errors
     deriving (Typeable)
 instance Exception Errors
 instance Show Errors where
-    show UnknownRequest      = "Unknown Request"
-    show NotFound            = "404 - Not found"
+    show UnknownRequest           = "Unknown Request"
+    show NotFound                 = "404 - Not found"
 
-    show WrongQueryParameter = "Wrong query parameter"
+    show WrongQueryParameter      = "Wrong query parameter"
+    show (ParametrParseError par) = "Cannot parse parameter " <> par
+    show ObjectExists             = "The object already exists"
+    show ObjectNOTExists          = " The object is not exists on db"
 
-    show ObjectExists        = "The object already exists"
-    show ObjectNOTExists     = " The object is not exists on db"
+    show WrongPass                = "Incorrect password or user is not exists"
 
-    show WrongPass           = "Incorrect password or user is not exists"
+    show UserNOTExists            = "The User is not exists on db"
 
-    show UserNOTExists       = "The User is not exists on db"
+    show AuthorNOTExists          = "The Author is not exists on db"
 
-    show AuthorNOTExists     = "The Author is not exists on db"
+    show CategoryWithSub          = "Category have subcategories"
+    show ParentNOTExists          = "Category parent NOT exists"
 
-    show CategoryWithSub     = "Category have subcategories"
-    show ParentNOTExists     = "Category parent NOT exists"
-
-    show (Send fileName)     = "Sending file: " <> fileName
+    show (Send fileName)          = "Sending file: " <> fileName
 
 
 errorCode :: Errors -> Status
 errorCode err = case err of
-    Send _ -> status200
-    NotFound      -> status404
-    _             -> status403
+    Send _   -> status200
+    NotFound -> status404
+    _        -> status403

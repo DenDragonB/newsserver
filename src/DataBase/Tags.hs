@@ -113,18 +113,15 @@ tagGet param = do
     case admin of
         Just (True , _ ) -> do
             let pool = dbConn env
-            let tid = getParam "id" param
-            let tname = getParam "name" param
+            tid <- parseParam "id" param 
+            tname <- parseParam "name" param
             tag <- queryWithExcept pool
-                (Query $ "WITH searchData AS (SELECT "
-                    <> " CAST (? as INT) AS sid "
-                    <> ", CAST (? as TEXT) AS stag ) "
-                    <> "SELECT id,tag FROM Tags,searchData WHERE"
-                    <> "(stag ISNULL OR stag=tag)"
-                    <> "AND (sid ISNULL OR sid=id)"
-                    <> "ORDER BY Tag "
+                (Query $ "SELECT id,tag FROM Tags WHERE"
+                    <> "(id = COALESCE (?, id))"
+                    <> "AND (tag = COALESCE (?, tag))"
+                    <> "ORDER BY tag "
                     <> getLimitOffsetBS param <> ";")
-                (tid,tname)
+                (tid :: Maybe Int,tname :: Maybe Text)
             return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 

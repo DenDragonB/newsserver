@@ -89,6 +89,17 @@ getParam name = foldr (func name) Nothing
             then ini
             else pe
 
+parseParam :: 
+    ( MonadError Exceptions.Errors m 
+    , BS.FromByteString a)
+    => BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> m (Maybe a)
+parseParam name prms = do
+    case getParam name prms of
+        Nothing -> return Nothing 
+        Just bspar -> case BS.fromByteString bspar of
+            Nothing -> throwError (Exceptions.ParametrParseError $ BS.toString name)
+            mpar -> return mpar  
+
 queryWithExcept ::
     ( MonadReader env m
     , HasDataBase env

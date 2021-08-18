@@ -12,7 +12,7 @@ import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (listToMaybe)
-import           Data.Text                          (Text)
+import           Data.Text                          (Text,pack)
 import           Data.Text.Encoding                 (decodeUtf8)
 import           GHC.Generics
 
@@ -44,15 +44,14 @@ authorAdd param = do
         "Just (User,Admin): " <> show admin
     case admin of
         Just (_, True ) -> do
-            let muid = getParam "user_id" param
-            let mabout = getParam "about" param
-            case sequence [muid,mabout] of
-                Just [uid,queryAbout] -> do
+            muid <- parseParam "user_id" param
+            mabout <- parseParam "about" param
+            case sequence (muid :: Maybe Int,mabout :: Maybe Text) of
+                Just (uid,queryAbout) -> do
                     let pool = dbConn env
                     isUser <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
                         [uid]
-
                     unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
                     isAuthor <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
@@ -62,7 +61,7 @@ authorAdd param = do
                         (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
                         (uid , queryAbout )
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add author with user id: " <> BS.toString uid
+                        "Add author with user id: " <> show uid
                     author <- queryWithExcept pool
                         (Query "SELECT * FROM Authors WHERE UserId = ? ;")
                         [uid]
@@ -83,10 +82,10 @@ authorEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let uid = getParam "user_id" param
-            let queryAbout = getParam "about" param
-            let maid = getParam "id" param
-            case maid of
+            uid <- parseParam "user_id" param
+            queryAbout <- parseParam "about" param
+            maid <- parseParam "id" param
+            case maid :: Maybe Int of
                 Nothing -> throwError WrongQueryParameter
                 Just aid -> do
                     let pool = dbConn env
@@ -99,9 +98,9 @@ authorEdit param = do
                             <> "UserId = COALESCE (?,userid),"
                             <> "About = COALESCE (?,about)"
                             <> "WHERE Id = ?;")
-                        (uid,queryAbout,aid)
+                        (uid :: Maybe Int,queryAbout :: Maybe Text,aid)
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Edit author id: " <> BS.toString aid
+                        "Edit author id: " <> show aid
                     author <- queryWithExcept pool
                         (Query "SELECT * FROM Authors WHERE Id = ? ;")
                         [aid]
@@ -122,18 +121,15 @@ authorGet param = do
     case admin of
         Just (_, True ) -> do
             let pool = dbConn env
-            let uid = getParam "user_id" param
-            let aid = getParam "id" param
+            uid <- parseParam "user_id" param
+            aid <- parseParam "id" param
             author <- queryWithExcept pool
-                (Query $ "WITH searchData AS (SELECT "
-                    <> " CAST (? as INT) AS sid "
-                    <> ", CAST (? as INT) AS suserid ) "
-                    <> "SELECT id,userid,about FROM authors,searchData WHERE"
-                    <> "(suserid ISNULL OR suserid=userid)"
-                    <> "AND (sid ISNULL OR sid=id)"
+                (Query $ "SELECT id,userid,about FROM authors WHERE"
+                    <> "(id = COALESCE (?, id))"
+                    <> "AND (userid = COALESCE (?, userid))"
                     <> "ORDER BY id "
                     <> getLimitOffsetBS param <> ";")
-                (aid,uid)
+                (aid :: Maybe Int, uid :: Maybe Int)
             return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 
@@ -150,8 +146,8 @@ authorDelete param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let maid = getParam "id" param
-            case maid of
+            maid <- parseParam "id" param
+            case maid :: Maybe Int of
                 Nothing -> throwError WrongQueryParameter
                 Just aid -> do
                     let pool = dbConn env
@@ -163,6 +159,6 @@ authorDelete param = do
                         (Query "DELETE FROM Authors WHERE Id = ? ;")
                         [aid]
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Delete author id: " <> BS.toString aid
-                    return $ A.String $ decodeUtf8 $ "Author with id "<>aid<>" deleted"
+                        "Delete author id: " <> show aid
+                    return $ A.String $ "Author with id "<> (pack . show) aid <>" deleted"
         _ -> throwError NotFound
