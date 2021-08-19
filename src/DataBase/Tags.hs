@@ -11,9 +11,8 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (listToMaybe)
-import           Data.Text                          (Text)
-import           Data.Text.Encoding                 (decodeUtf8)
+import           Data.Maybe                         (isNothing, listToMaybe)
+import           Data.Text                          (Text, pack, unpack)
 import           GHC.Generics
 
 import           DataBase
@@ -41,8 +40,8 @@ tagAdd param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let mname = getParam "name" param
-            case mname of
+            mname <- parseParam "name" param
+            case mname :: Maybe Text of
                 Nothing -> throwError WrongQueryParameter
                 Just tagname -> do
                     let pool = dbConn env
@@ -54,7 +53,7 @@ tagAdd param = do
                         (Query "INSERT INTO Tags (Tag) VALUES (?);")
                         [tagname]
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Tag: " <> BS.toString tagname
+                        "Add Tag: " <> unpack tagname
                     tag <- queryWithExcept pool
                         (Query "SELECT * FROM Tags WHERE Tag = ? ;")
                         [tagname]
@@ -74,29 +73,28 @@ tagEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let mtid = getParam "id" param
-            let mname = getParam "name" param
-            case sequence [mtid,mname] of
-                Just [tid,tname] -> do
-                    let pool = dbConn env
-                    isTag <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Id = ? );")
-                        [tid]
-                    isTagName <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ? );")
-                        [tname]
-                    unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
-                    when (maybe False fromOnly $ listToMaybe isTagName) (throwError ObjectExists)
-                    _ <- execWithExcept pool
-                        (Query "UPDATE Tags SET Tag = ? WHERE Id = ? ;")
-                        (tname , tid)
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Edit Tag id: " <> BS.toString tid
-                    tag <- queryWithExcept pool
-                        (Query "SELECT * FROM Tags WHERE Id = ? ;")
-                        [tid]
-                    return $ A.toJSON (tag :: [Tag])
-                _ -> throwError WrongQueryParameter
+            tid <- parseParam "id" param
+            tname <- parseParam "name" param
+            when (isNothing tid || isNothing tname) $ throwError WrongQueryParameter
+
+            let pool = dbConn env
+            isTag <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Id = ? );")
+                [tid :: Maybe Int]
+            isTagName <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ? );")
+                [tname :: Maybe Text]
+            unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
+            when (maybe False fromOnly $ listToMaybe isTagName) (throwError ObjectExists)
+            _ <- execWithExcept pool
+                (Query "UPDATE Tags SET Tag = ? WHERE Id = ? ;")
+                (tname , tid)
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Edit Tag id: " <> show tid
+            tag <- queryWithExcept pool
+                (Query "SELECT * FROM Tags WHERE Id = ? ;")
+                [tid]
+            return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 
 tagGet ::
@@ -113,7 +111,7 @@ tagGet param = do
     case admin of
         Just (True , _ ) -> do
             let pool = dbConn env
-            tid <- parseParam "id" param 
+            tid <- parseParam "id" param
             tname <- parseParam "name" param
             tag <- queryWithExcept pool
                 (Query $ "SELECT id,tag FROM Tags WHERE"
@@ -138,8 +136,8 @@ tagDelete param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let mtid = getParam "id" param
-            case mtid of
+            mtid <- parseParam "id" param
+            case mtid :: Maybe Int of
                 Nothing -> throwError WrongQueryParameter
                 Just tid -> do
                     let pool = dbConn env
@@ -151,6 +149,6 @@ tagDelete param = do
                         (Query "DELETE FROM Tags WHERE Id = ? ;")
                         [tid]
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Delete Tag id: " <> BS.toString tid
-                    return $ A.String $ decodeUtf8 $ "Tag with id " <> tid <> " deleted"
+                        "Delete Tag id: " <> show tid
+                    return $ A.String $ pack $ "Tag with id " <> show tid <> " deleted"
         _ -> throwError NotFound

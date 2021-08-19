@@ -12,8 +12,7 @@ import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (listToMaybe)
-import           Data.Text                          (Text,pack)
-import           Data.Text.Encoding                 (decodeUtf8)
+import           Data.Text                          (Text, pack)
 import           GHC.Generics
 
 import           DataBase

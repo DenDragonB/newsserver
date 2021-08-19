@@ -14,10 +14,11 @@ import           GHC.Generics                       (Generic)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
+import qualified Data.ByteString.Conversion         as BS
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe, listToMaybe)
-import           Data.Text                          (Text)
-import           Data.Text.Encoding                 (decodeUtf8)
+import           Data.Maybe                         (fromMaybe, isNothing,
+                                                     listToMaybe)
+import           Data.Text                          (Text, pack, unpack)
 import           Data.Time
 
 import           DataBase
@@ -77,8 +78,8 @@ draftAdd ::
     -> m A.Value
 draftAdd param = do
     env <- ask
-    let mtoken = getParam "token" param
-    case mtoken of
+    mtoken <- parseParam "token" param
+    case mtoken :: Maybe Text of
         Just token -> do
             let pool = dbConn env
             authors <- queryWithExcept pool
@@ -87,27 +88,31 @@ draftAdd param = do
                 [token]
             case (authors :: [Only Int]) of
                 [author] -> do
-                    let mheader = getParam "header" param
-                    let mcat = getParam "category_id" param
-                    case sequence [mheader,mcat] of
-                        Just [queryHeader,cat] -> do
-                            let tags = fromMaybe "[]" $ getParam "tags_id" param
-                            let cont = fromMaybe "" $ getParam "content" param
-                            let mph = fromMaybe "" $ getParam "main_photo" param
-                            let phs = fromMaybe "[]" $ getParam "photos" param
-                            dids <- queryWithExcept pool
-                                (Query "INSERT INTO Drafts "
-                                    <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
-                                    <> " VALUES ( ?,NOW(),0,?,?, ARRAY ?,?,?, ARRAY ?) RETURNING Id;")
-                                (queryHeader, fromOnly author,
-                                cat,tags,cont,mph,phs)
-                            liftIO $ Logger.info (Logger.lConfig env) $
-                                "Add Draft: " <> BS.toString queryHeader
-                            draft <- queryWithExcept pool
-                                (Query "SELECT * FROM Drafts WHERE Id = ? ;")
-                                $ fromOnly <$> (dids :: [Only Int])
-                            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
-                        _ -> throwError WrongQueryParameter
+                    mheader <- parseParam "header" param
+                    mcat <- parseParam "category_id" param
+                    when (isNothing mheader || isNothing mcat) $ throwError WrongQueryParameter
+                    let queryHeader = fromMaybe "" (mheader :: Maybe Text)
+                    let cat = fromMaybe 0 (mcat :: Maybe Int)
+                    mtags <- parseParamDelBracket "tags_id" param
+                    mcont <- parseParam "content" param
+                    mmph <- parseParam "main_photo" param
+                    mphs <- parseParamDelBracket "photos" param
+                    let tags = maybe [] BS.fromList (mtags :: Maybe (BS.List Int))
+                    let cont = fromMaybe "" (mcont :: Maybe Text)
+                    let mph = fromMaybe "" (mmph :: Maybe Text)
+                    let phs = maybe [] BS.fromList (mphs :: Maybe (BS.List Text))
+                    dids <- queryWithExcept pool
+                        (Query "INSERT INTO Drafts "
+                            <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
+                            <> " VALUES ( ?,NOW(),0,?,?, ?,?,?, ?) RETURNING Id;")
+                        (queryHeader, fromOnly author,
+                            cat,PGArray tags,cont,mph, PGArray phs)
+                    liftIO $ Logger.info (Logger.lConfig env) $
+                        "Add Draft: " <> unpack queryHeader
+                    draft <- queryWithExcept pool
+                        (Query "SELECT * FROM Drafts WHERE Id = ? ;")
+                        $ fromOnly <$> (dids :: [Only Int])
+                    return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
                 _ -> throwError AuthorNOTExists
         _ -> throwError NotFound
 
@@ -121,44 +126,53 @@ draftEdit ::
     -> m A.Value
 draftEdit param = do
     env <- ask
-    let mtoken = getParam "token" param
-    let mdid = getParam "id" param
-    case sequence [mtoken,mdid] of
-        Just [token,did] -> do
-            let pool = dbConn env
-            authors <- queryWithExcept pool
-                (Query "SELECT id FROM Authors WHERE UserId = "
-                    <> "(SELECT Id FROM Users WHERE Token = ?);")
-                [token]
-            when (null authors) (throwError AuthorNOTExists)
-            let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
-            isDraft <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
-                (did,author)
-            unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
-            let queryHeader = getParam "header" param
-            let cat = getParam "category_id" param
-            let tags = makeArray <$> getParam "tags_id" param
-            let cont = getParam "content" param
-            let mph = getParam "main_photo" param
-            let phs = makeArray <$> getParam "photos" param
-            _ <- execWithExcept pool
-                (Query "UPDATE Drafts SET "
-                    <> "Header = COALESCE (?, Header ),"
-                    <> "Category = COALESCE (?, Category ),"
-                    <> "Tags = COALESCE (?, Tags ),"
-                    <> "Content = COALESCE (?, Content ),"
-                    <> "MainPhoto = COALESCE (?, MainPhoto ),"
-                    <> "Photos = COALESCE (?, Photos )"
-                    <> "WHERE Id = ?;")
-                (queryHeader,cat,tags,cont,mph,phs,did)
-            liftIO $ Logger.info (Logger.lConfig env) $
-                "Edit Draft id: " <> BS.toString did
-            draft <- queryWithExcept pool
-                (Query "SELECT * FROM Drafts WHERE Id = ? ;")
-                [did]
-            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
-        _ -> throwError NotFound
+    mtoken <- parseParam "token" param
+    mdid <- parseParam "id" param
+    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
+    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let did = fromMaybe 0 (mdid :: Maybe Int)
+
+    let pool = dbConn env
+    authors <- queryWithExcept pool
+        (Query "SELECT id FROM Authors WHERE UserId = "
+            <> "(SELECT Id FROM Users WHERE Token = ?);")
+        [token]
+    when (null authors) (throwError AuthorNOTExists)
+    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    isDraft <- queryWithExcept pool
+        (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
+        (did,author)
+    unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
+
+    queryHeader <- parseParam "header" param
+    cat <- parseParam "category_id" param
+    tags <- parseParamDelBracket "tags_id" param
+    cont <- parseParam "content" param
+    mph <- parseParam "main_photo" param
+    phs <- parseParamDelBracket "photos" param
+
+    _ <- execWithExcept pool
+        (Query "UPDATE Drafts SET "
+            <> "Header = COALESCE (?, Header ),"
+            <> "Category = COALESCE (?, Category ),"
+            <> "Tags = COALESCE (?, Tags ),"
+            <> "Content = COALESCE (?, Content ),"
+            <> "MainPhoto = COALESCE (?, MainPhoto ),"
+            <> "Photos = COALESCE (?, Photos )"
+            <> "WHERE Id = ?;")
+        ( queryHeader :: Maybe Text
+        , cat :: Maybe Int
+        , PGArray . BS.fromList <$> (tags :: Maybe (BS.List Int))
+        , cont :: Maybe Text
+        , mph :: Maybe Text
+        , PGArray . BS.fromList <$> (phs:: Maybe (BS.List Text))
+        , did)
+    liftIO $ Logger.info (Logger.lConfig env) $
+        "Edit Draft id: " <> show did
+    draft <- queryWithExcept pool
+        (Query "SELECT * FROM Drafts WHERE Id = ? ;")
+        [did]
+    return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
 
 draftGet ::
     ( MonadReader env m
@@ -170,25 +184,27 @@ draftGet ::
     -> m A.Value
 draftGet param = do
     env <- ask
-    let mtoken = getParam "token" param
-    let mdid = getParam "id" param
-    case sequence [mtoken,mdid] of
-        Just [token,did] -> do
-            let pool = dbConn env
-            authors <- queryWithExcept pool
-                (Query "SELECT id FROM Authors WHERE UserId = "
-                    <> "(SELECT Id FROM Users WHERE Token = ?);")
-                [token]
-            when (null authors) (throwError AuthorNOTExists)
-            let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
-            draft <- queryWithExcept pool
-                (Query $ "SELECT * FROM Drafts WHERE Id = ? AND Author = ? "
-                    <> "ORDER BY RegDate "
-                    <> getLimitOffsetBS param <> ";")
-                (did,author)
-            when (null draft) (throwError ObjectNOTExists)
-            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
-        _ -> throwError NotFound
+    mtoken <- parseParam "token" param
+    mdid <- parseParam "id" param
+    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
+    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let did = fromMaybe 0 (mdid :: Maybe Int)
+
+    let pool = dbConn env
+    authors <- queryWithExcept pool
+        (Query "SELECT id FROM Authors WHERE UserId = "
+            <> "(SELECT Id FROM Users WHERE Token = ?);")
+        [token]
+    when (null authors) (throwError AuthorNOTExists)
+
+    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    draft <- queryWithExcept pool
+        (Query $ "SELECT * FROM Drafts WHERE Id = ? AND Author = ? "
+            <> "ORDER BY RegDate "
+            <> getLimitOffsetBS param <> ";")
+        (did,author)
+    when (null draft) (throwError ObjectNOTExists)
+    return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
 
 draftDelete ::
     ( MonadReader env m
@@ -200,28 +216,29 @@ draftDelete ::
     -> m A.Value
 draftDelete param = do
     env <- ask
-    let mtoken = getParam "token" param
-    let mdid = getParam "id" param
-    case sequence [mtoken,mdid] of
-        Just [token,did] -> do
-            let pool = dbConn env
-            authors <- queryWithExcept pool
-                (Query "SELECT id FROM Authors WHERE UserId = "
-                    <> "(SELECT Id FROM Users WHERE Token = ?);")
-                [token]
-            when (null authors) (throwError AuthorNOTExists)
-            let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
-            isDraft <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT Id FROM Drafts WHERE Id = ? AND Author = ? );")
-                (did,author)
-            unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
-            _ <- liftIO $ execDBsafe pool
-                (Query "DELETE FROM Drafts WHERE Id = ? AND Author = ? ;")
-                (did,author)
-            liftIO $ Logger.info (Logger.lConfig env) $
-                "Delete Draft id: " <> BS.toString did
-            return $ A.String $ decodeUtf8 $ "Draft with id " <> did <> " deleted"
-        _ -> throwError NotFound
+    mtoken <- parseParam "token" param
+    mdid <- parseParam "id" param
+    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
+    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let did = fromMaybe 0 (mdid :: Maybe Int)
+
+    let pool = dbConn env
+    authors <- queryWithExcept pool
+        (Query "SELECT id FROM Authors WHERE UserId = "
+            <> "(SELECT Id FROM Users WHERE Token = ?);")
+        [token]
+    when (null authors) (throwError AuthorNOTExists)
+    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    isDraft <- queryWithExcept pool
+        (Query "SELECT EXISTS (SELECT Id FROM Drafts WHERE Id = ? AND Author = ? );")
+        (did,author)
+    unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
+    _ <- liftIO $ execDBsafe pool
+        (Query "DELETE FROM Drafts WHERE Id = ? AND Author = ? ;")
+        (did,author)
+    liftIO $ Logger.info (Logger.lConfig env) $
+        "Delete Draft id: " <> show did
+    return $ A.String $ pack $ "Draft with id " <> show did <> " deleted"
 
 draftPublish ::
     ( MonadReader env m
@@ -233,53 +250,54 @@ draftPublish ::
     -> m A.Value
 draftPublish param = do
     env <- ask
-    let mtoken = getParam "token" param
-    let mdid = getParam "id" param
-    case sequence [mtoken,mdid] of
-        Just [token,did] -> do
-            let pool = dbConn env
-            authors <- queryWithExcept pool
-                (Query "SELECT id FROM Authors WHERE UserId = "
-                    <> "(SELECT Id FROM Users WHERE Token = ?);")
-                [token]
-            when (null authors) (throwError AuthorNOTExists)
-            let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
-            drafts <- queryWithExcept pool
-                (Query "SELECT * FROM Drafts WHERE Id = ? AND Author = ? ;")
-                (did,author)
-            when (null drafts) (throwError ObjectNOTExists)
+    mtoken <- parseParam "token" param
+    mdid <- parseParam "id" param
+    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
+    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let did = fromMaybe 0 (mdid :: Maybe Int)
 
-            let draft = fromMaybe emptyDraft $ listToMaybe (drafts :: [Draft])
-            news <- queryWithExcept pool
-                (Query "SELECT Id FROM News WHERE Id = ? ;")
-                [dbpost_id draft]
-            if null news
-                then do
-                    nids <- queryWithExcept pool
-                        (Query "INSERT INTO News "
-                            <> "(Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos)"
-                            <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
-                            <> "FROM Drafts WHERE Id = ? ) RETURNING Id;")
-                        [did]
-                    let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (nids :: [Only Int])
-                    _ <- execWithExcept pool
-                        (Query "UPDATE Drafts SET News = ? WHERE Id = ? ;")
-                        (nid,did)
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Publish News id: " <> show nid
-                    DB.postGet [("token",Just token),("id",(Just . BS.fromString . show) nid)]
-                else do
-                    let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (news :: [Only Int])
-                    _ <- execWithExcept pool
-                        (Query "UPDATE News SET "
-                            <> "(Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos) = "
-                            <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
-                            <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;")
-                        (did,nid)
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Publish News id: " <> show nid
-                    DB.postGet [("token",Just token),("id",(Just . BS.fromString . show) nid)]
-        _ -> throwError NotFound
+    let pool = dbConn env
+    authors <- queryWithExcept pool
+        (Query "SELECT id FROM Authors WHERE UserId = "
+            <> "(SELECT Id FROM Users WHERE Token = ?);")
+        [token]
+    when (null authors) (throwError AuthorNOTExists)
+    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    drafts <- queryWithExcept pool
+        (Query "SELECT * FROM Drafts WHERE Id = ? AND Author = ? ;")
+        (did,author)
+    when (null drafts) (throwError ObjectNOTExists)
+
+    let draft = fromMaybe emptyDraft $ listToMaybe (drafts :: [Draft])
+    news <- queryWithExcept pool
+        (Query "SELECT Id FROM News WHERE Id = ? ;")
+        [dbpost_id draft]
+    if null news
+        then do
+            nids <- queryWithExcept pool
+                (Query "INSERT INTO News "
+                    <> "(Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos)"
+                    <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
+                    <> "FROM Drafts WHERE Id = ? ) RETURNING Id;")
+                [did]
+            let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (nids :: [Only Int])
+            _ <- execWithExcept pool
+                (Query "UPDATE Drafts SET News = ? WHERE Id = ? ;")
+                (nid,did)
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Publish News id: " <> show nid
+            DB.postGet [("token", (Just . BS.toByteString') token),("id",(Just . BS.toByteString') nid)]
+        else do
+            let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (news :: [Only Int])
+            _ <- execWithExcept pool
+                (Query "UPDATE News SET "
+                    <> "(Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos) = "
+                    <> "(SELECT Header,RegDate,Author,Category,Tags,Content,MainPhoto,Photos "
+                    <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;")
+                (did,nid)
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Publish News id: " <> show nid
+            DB.postGet [("token",(Just . BS.toByteString') token),("id",(Just . BS.toByteString') nid)]
 
 emptyDraft :: Draft
 emptyDraft = Draft

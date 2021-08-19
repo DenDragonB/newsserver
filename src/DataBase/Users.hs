@@ -10,18 +10,18 @@ import           Database.PostgreSQL.Simple.Types
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Crypto.BCrypt
-import qualified Data.Aeson                         as A
-import qualified Data.ByteString.Conversion         as BS
-import qualified Data.ByteString.UTF8               as BS
+import qualified Data.Aeson                       as A
+import qualified Data.ByteString.Conversion       as BS
+import qualified Data.ByteString.UTF8             as BS
 import           Data.Maybe
-import           Data.Text.Encoding                 (decodeUtf8)
+import qualified Data.Text                        as T
 import           Data.Time
 import           GHC.Generics
 
 import           DataBase
 import           Exceptions
 import           Logger
-import           Prelude                            hiding (id)
+import           Prelude                          hiding (id)
 
 data User = User
     { id         :: Int
@@ -104,19 +104,20 @@ findToken ::
     -> m (Maybe (Bool,Bool))
 findToken param = do
     env <- ask
-    let queryToken = getParam "token" param
+    mToken <- parseParam "token" param
+    let queryToken = fromMaybe "" (mToken :: Maybe T.Text)
     liftIO $ Logger.debug (Logger.lConfig env) $
-                        "Request from user with token: " <> show queryToken
-    if isNothing queryToken
+                        "Request from user with token: " <> T.unpack queryToken
+    if isNothing mToken
         then return Nothing
         else do
             let pool = dbConn env
             userExist <- queryWithExcept pool
                     (Query "SELECT EXISTS (SELECT id FROM Users WHERE token = ? );")
-                    [fromMaybe "" queryToken]
+                    [queryToken]
             admExist <- queryWithExcept pool
                     (Query "SELECT Adm FROM Users WHERE token = ? ;")
-                    [fromMaybe "" queryToken]
+                    [queryToken]
             case admExist of
                 [] -> return $ Just ( maybe False fromOnly $ listToMaybe userExist , False)
                 _  -> return $ Just ( maybe False fromOnly $ listToMaybe userExist , maybe False fromOnly $ listToMaybe admExist)
@@ -138,14 +139,10 @@ userGet param = do
             let queryUser = parseUser param
             let pool = dbConn env
             u <- queryWithExcept pool
-                (Query $ "WITH searchData AS (SELECT "
-                    <> " CAST (? as TEXT) AS sUserName "
-                    <> ", CAST (? as TEXT) AS sFirstName "
-                    <> ", CAST (? as TEXT) AS sLastName ) "
-                    <> "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
-                    <> "(sUserName ISNULL OR sUserName=UserName)"
-                    <> "AND (sFirstName ISNULL OR sFirstName=FirstName)"
-                    <> "AND (sLastName ISNULL OR sLastName=LastName)"
+                (Query $ "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
+                    <> "(UserName = COALESCE (?,UserName))"
+                    <> "AND (FirstName = COALESCE (?,FirstName))"
+                    <> "AND (LastName = COALESCE (?,LastName))"
                     <> "ORDER BY UserName "
                     <> getLimitOffsetBS param <> ";")
                 (name queryUser,first_name queryUser,last_name queryUser)
@@ -163,7 +160,8 @@ userDel param = do
     admin <- findToken param
     case admin of
         Just (_,True ) -> do
-            case getParam "id" param of
+            muid <- parseParam "id" param
+            case muid :: Maybe Int of
                 Nothing -> throwError WrongQueryParameter
                 Just uid -> do
                     env <- ask
@@ -172,8 +170,8 @@ userDel param = do
                         (Query "DELETE FROM Users WHERE id = ? ;")
                         [uid]
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Delete user id: " <> BS.toString uid
-                    return $ A.String $ decodeUtf8 $ "User with id "<>uid<>" deleted"
+                        "Delete user id: " <> show uid
+                    return $ A.String $ T.pack $ "User with id "<> show uid <>" deleted"
         _ -> throwError NotFound
 
 userNewPass ::

@@ -14,8 +14,9 @@ import           GHC.Generics                       (Generic)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
+import qualified Data.ByteString.Conversion         as BS
 import qualified Data.ByteString.UTF8               as BS
-import           Data.Maybe                         (fromMaybe, isNothing)
+import           Data.Maybe                         (fromMaybe)
 import           Data.Text                          (Text)
 import           Data.Time
 
@@ -72,35 +73,24 @@ postGet ::
     -> m A.Value
 postGet param = do
     env <- ask
-    let mtoken = getParam "token" param
-    case sequence [mtoken] of
+    mtoken <- parseParam "token" param
+    case sequence [mtoken :: Maybe Text] of
         Just _ -> do
             let pool = dbConn env
             let nsort = fromMaybe "" $ getParam "sort_by" param
-            let nid = getParam "id" param
-            let ndate = getParam "created_at" param
-            let ndateLT = getParam "created_at__lt" param
-            let ndateGT = getParam "created_at__gt" param
-            let nauthor = getParam "author" param
-            let ntag = getParam "tag" param
-            let ntagAll = makeArray <$> getParam "tags__all" param
-            let ntagIn = makeArray <$> getParam "tags__in" param
-            let nheader = getParam "header" param
-            let ncont = getParam "content" param
+            nid <- parseParam "id" param
+            ndate <- parseParamDay "created_at" param
+            ndateLT <- parseParamDay "created_at__lt" param
+            ndateGT <- parseParamDay "created_at__gt" param
+            nauthor <- parseParam "author" param
+            ntag <- parseParamDelBracket "tag" param
+            ntagAll <- parseParamDelBracket "tags__all" param
+            ntagIn <- parseParamDelBracket "tags__in" param
+            nheader <- parseParam "header" param
+            ncont <- parseParam "content" param
             news <- queryWithExcept pool
-                (Query $ "WITH searchData AS (SELECT "
-                    <> " CAST (? as INT) AS sid "
-                    <> ", CAST (? as DATE) AS screateAt "
-                    <> ", CAST (? as DATE) AS screateLT "
-                    <> ", CAST (? as DATE) AS screateGT "
-                    <> ", CAST (? as TEXT) AS sauthorName "
-                    <> ", CAST (" <> (if isNothing ntag then "?" else "ARRAY [?]") <> " as INT[]) AS stagOne "
-                    <> ", CAST (? as INT[]) AS stagsALL "
-                    <> ", CAST (? as INT[]) AS stagsIN "
-                    <> ", CAST (? as TEXT) AS sheader "
-                    <> ", CAST (? as TEXT) AS scontent )"
-                    <> "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
-                    <> "n.Content, n.MainPhoto, n.Photos  FROM searchData , News n"
+                (Query $ "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
+                    <> "n.Content, n.MainPhoto, n.Photos  FROM News n"
                     -- Add Name of Author
                     <> " LEFT OUTER JOIN (Authors a JOIN Users u on a.userid = u.id)"
                     <> " ON n.Author = a.id "
@@ -110,16 +100,16 @@ postGet param = do
                     <> "LEFT JOIN Tags t ON t.id = ANY(n.tags) "
                     <> " WHERE "
                     -- Add selection
-                    <> "(sid ISNULL OR sid=n.id)"
-                    <> "AND (screateAt ISNULL OR screateAt=n.RegDate)"
-                    <> "AND (screateLT ISNULL OR screateLT>n.RegDate)"
-                    <> "AND (screateGT ISNULL OR screateGT<n.RegDate)"
-                    <> "AND (sauthorName ISNULL OR strpos(u.UserName,sauthorName)>0 )"
-                    <> "AND (stagOne ISNULL OR Tags && stagOne)"
-                    <> "AND (stagsALL ISNULL OR stagsALL <@ Tags)"
-                    <> "AND (stagsIN ISNULL OR Tags && stagsIN)"
-                    <> "AND (sheader ISNULL OR strpos(n.Header,sheader) > 0)"
-                    <> "AND (scontent ISNULL OR strpos(n.Content,scontent) > 0)"
+                    <> "(n.id = COALESCE (?,n.id))"
+                    <> "AND (n.RegDate = COALESCE (?,n.RegDate))"
+                    <> "AND (n.RegDate < COALESCE (?,n.RegDate+1))"
+                    <> "AND (n.RegDate > COALESCE (?,n.RegDate-1))"
+                    <> "AND (strpos(u.UserName,COALESCE(?,u.UserName))>0 )"
+                    <> "AND (Tags && COALESCE(?,Tags))"
+                    <> "AND (COALESCE (?,Tags) <@ Tags)"
+                    <> "AND (Tags && COALESCE (?,Tags))"
+                    <> "AND (strpos(n.Header,COALESCE (?,n.Header)) > 0)"
+                    <> "AND (strpos(n.Content,COALESCE (?,n.Content)) > 0)"
                     -- group elements to correct work array_agg(tag)
                     <> "GROUP BY n.Id, n.Header, n.RegDate, u.UserName, c.CatName, "
                     <> "n.Content, n.MainPhoto, n.Photos "
@@ -128,7 +118,16 @@ postGet param = do
                     -- Add pagination
                     <> getLimitOffsetBS param
                     <> ";")
-                (nid,ndate,ndateLT,ndateGT,nauthor,ntag,ntagAll,ntagIn,nheader,ncont)
+                ( nid :: Maybe Int
+                , ndate
+                , ndateLT
+                , ndateGT
+                , nauthor :: Maybe Text
+                , PGArray . BS.fromList <$> (ntag :: Maybe (BS.List Int))
+                , PGArray . BS.fromList <$> (ntagAll :: Maybe (BS.List Int))
+                , PGArray . BS.fromList <$> (ntagIn :: Maybe (BS.List Int))
+                , nheader :: Maybe Text
+                , ncont :: Maybe Text)
             return $ A.toJSON (newsToJSON <$> news)
         _ -> throwError NotFound
 

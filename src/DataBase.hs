@@ -16,6 +16,7 @@ import qualified Data.ByteString.UTF8       as BS
 import           Data.Int
 import           Data.Maybe
 import           Data.Pool
+import           Data.Time
 import           Database.PostgreSQL.Simple
 
 import qualified Exceptions
@@ -89,16 +90,37 @@ getParam name = foldr (func name) Nothing
             then ini
             else pe
 
-parseParam :: 
-    ( MonadError Exceptions.Errors m 
+parseParam ::
+    ( MonadError Exceptions.Errors m
     , BS.FromByteString a)
     => BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> m (Maybe a)
 parseParam name prms = do
     case getParam name prms of
-        Nothing -> return Nothing 
+        Nothing -> return Nothing
         Just bspar -> case BS.fromByteString bspar of
             Nothing -> throwError (Exceptions.ParametrParseError $ BS.toString name)
-            mpar -> return mpar  
+            mpar -> return mpar
+
+parseParamDelBracket ::
+    ( MonadError Exceptions.Errors m
+    , BS.FromByteString a)
+    => BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> m (Maybe a)
+parseParamDelBracket name prms = do
+    case getParam name prms of
+        Nothing -> return Nothing
+        Just bspar -> case (BS.fromByteString . delBracketStart . delBracketEnd) bspar of
+            Nothing -> throwError (Exceptions.ParametrParseError $ BS.toString name)
+            mpar -> return mpar
+
+parseParamDay ::
+    MonadError Exceptions.Errors m
+    => BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> m (Maybe Day)
+parseParamDay name prms = do
+    case getParam name prms of
+        Nothing -> return Nothing
+        Just bspar -> case toDay bspar of
+            Nothing -> throwError (Exceptions.ParametrParseError $ BS.toString name)
+            mpar -> return mpar
 
 queryWithExcept ::
     ( MonadReader env m
@@ -130,7 +152,7 @@ execWithExcept ::
     ,ToRow q) => DBPool -> Query -> q -> m Int64
 execWithExcept pool querystring q = do
     env <- ask
-    res <- liftIO $ try (execDBsafe pool querystring q) -- :: MonadIOIO (Either SomeException [r])
+    res <- liftIO $ try (execDBsafe pool querystring q)
     case res of
         Right out -> return out
         Left err -> case fromException err of
@@ -148,3 +170,21 @@ makeArray = BS.fromString . map func . BS.toString where
         '[' -> '{'
         ']' -> '}'
         _   -> c
+
+delBracketStart :: BS.ByteString -> BS.ByteString
+delBracketStart bs = if isBracket (BS.take 1 bs) then BS.drop 1 bs else bs
+
+delBracketEnd :: BS.ByteString -> BS.ByteString
+delBracketEnd bs = if isBracket (BS.drop (BS.length bs - 1) bs) then BS.take (BS.length bs - 1) bs else bs
+
+isBracket :: BS.ByteString -> Bool
+isBracket bs = case BS.decode bs of
+    Just (c,_) -> c `elem` ['[',']','{','}']
+    _          -> False
+
+toDay :: BS.ByteString -> Maybe Day
+toDay bs =
+    let year = fromMaybe 0 $ BS.fromByteString $ BS.take 4 bs
+        month = fromMaybe 0 $ BS.fromByteString $ (BS.take 2 . snd . BS.splitAt 5) bs
+        day = fromMaybe 0 $ BS.fromByteString $ BS.drop 8 bs
+    in fromGregorianValid year month day

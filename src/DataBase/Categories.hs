@@ -13,8 +13,7 @@ import qualified Data.Aeson                         as A
 import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (fromMaybe, isNothing,
                                                      listToMaybe)
-import           Data.Text                          (Text,unpack,pack)
-import           Data.Text.Encoding                 (decodeUtf8)
+import           Data.Text                          (Text, pack, unpack)
 import           GHC.Generics
 
 import           DataBase
