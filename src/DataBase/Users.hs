@@ -22,6 +22,7 @@ import           DataBase
 import           Exceptions
 import           Logger
 import           Prelude                          hiding (id)
+-- import qualified GHC.TypeLits as T
 
 data User = User
     { id         :: Int
@@ -50,18 +51,6 @@ emptyUser = User
     , token = ""
     }
 
-parseUser :: [( BS.ByteString , Maybe BS.ByteString )] -> User
-parseUser = foldr func emptyUser where
-    func (pn,pe) puser = case pn of
-        "id"         -> puser {id = fromMaybe 0 (pe >>= BS.fromByteString)}
-        "last_name"  -> puser {last_name = BS.toString $ fromMaybe "" pe}
-        "first_name" -> puser {first_name = BS.toString $ fromMaybe "" pe}
-        "name"       -> puser {name = BS.toString $ fromMaybe "" pe}
-        "avatar"     -> puser {avatar = BS.toString $ fromMaybe "" pe}
-        "pass"       -> puser {upass = BS.toString $ makeHash $ fromMaybe "" pe}
-        "token"      -> puser {token = BS.toString $ fromMaybe "" pe}
-        _            -> puser
-
 makeHash :: BS.ByteString -> BS.ByteString
 makeHash bs = fromMaybe "" $ hashPassword bs $
     fromMaybe "" $ genSalt "$2b$" 6 "qsfvkpkvtnhtefhk"
@@ -75,23 +64,36 @@ userAdd ::
     ) => [( BS.ByteString , Maybe BS.ByteString )]
     -> m A.Value
 userAdd param = do
-    let userToAdd = parseUser param
+
+    mFirstName <- parseParam "first_name" param
+    mLastName <- parseParam "last_name" param
+    mUserName <- parseParam "name" param
+    mAvatar <- parseParam "avatar" param
+    mPass <- parseParam "pass" param 
+
+    let userName = fromMaybe "" (mUserName :: Maybe T.Text)
+    let userPass = fromMaybe "" (mPass :: Maybe T.Text)
+
     env <- ask
     let pool = dbConn env
     oldUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-                [name userToAdd]
+                [mUserName]
     when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
     _ <- execWithExcept pool
         (Query "INSERT INTO Users "
             <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
             <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
-        (first_name userToAdd, last_name userToAdd, avatar userToAdd, name userToAdd, upass userToAdd,
-            (BS.toString . makeHash . BS.fromString) (name userToAdd <> upass userToAdd))
+        ( mFirstName :: Maybe T.Text
+        , mLastName :: Maybe T.Text
+        , mAvatar :: Maybe T.Text
+        , mUserName
+        , mPass
+        , (BS.toString . makeHash . BS.toByteString') (userName <> userPass))
     u <- queryWithExcept pool
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-        (name userToAdd, first_name userToAdd, last_name userToAdd)
-    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> name userToAdd
+        (mUserName, mFirstName, mLastName)
+    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
     return $ A.toJSON (u :: [User])
 
 findToken ::
@@ -136,7 +138,9 @@ userGet param = do
         then throwError NotFound
         else do
             env <- ask
-            let queryUser = parseUser param
+            mFirstName <- parseParam "first_name" param
+            mLastName <- parseParam "last_name" param
+            mUserName <- parseParam "name" param
             let pool = dbConn env
             u <- queryWithExcept pool
                 (Query $ "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
@@ -145,7 +149,9 @@ userGet param = do
                     <> "AND (LastName = COALESCE (?,LastName))"
                     <> "ORDER BY UserName "
                     <> getLimitOffsetBS param <> ";")
-                (name queryUser,first_name queryUser,last_name queryUser)
+                ( mUserName :: Maybe T.Text
+                , mFirstName :: Maybe T.Text
+                , mLastName :: Maybe T.Text)
             return $ A.toJSON (u :: [User])
 
 userDel ::
