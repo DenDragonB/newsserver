@@ -22,7 +22,6 @@ import           DataBase
 import           Exceptions
 import           Logger
 import           Prelude                          hiding (id)
--- import qualified GHC.TypeLits as T
 
 data User = User
     { id         :: Int
@@ -69,32 +68,34 @@ userAdd param = do
     mLastName <- parseParam "last_name" param
     mUserName <- parseParam "name" param
     mAvatar <- parseParam "avatar" param
-    mPass <- parseParam "pass" param 
+    mPass <- parseParam "pass" param
 
-    let userName = fromMaybe "" (mUserName :: Maybe T.Text)
-    let userPass = fromMaybe "" (mPass :: Maybe T.Text)
+    case sequence [mUserName,mPass] of
+        Just [userName, userPass] -> do
+            when (T.null userName || T.null userPass) (throwError WrongQueryParameter)
 
-    env <- ask
-    let pool = dbConn env
-    oldUser <- queryWithExcept pool
+            env <- ask
+            let pool = dbConn env
+            oldUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
                 [mUserName]
-    when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
-    _ <- execWithExcept pool
-        (Query "INSERT INTO Users "
-            <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
-            <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
-        ( mFirstName :: Maybe T.Text
-        , mLastName :: Maybe T.Text
-        , mAvatar :: Maybe T.Text
-        , mUserName
-        , mPass
-        , (BS.toString . makeHash . BS.toByteString') (userName <> userPass))
-    u <- queryWithExcept pool
-        (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-        (mUserName, mFirstName, mLastName)
-    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
-    return $ A.toJSON (u :: [User])
+            when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
+            _ <- execWithExcept pool
+                (Query "INSERT INTO Users "
+                <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
+                <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
+                ( mFirstName :: Maybe T.Text
+                , mLastName :: Maybe T.Text
+                , mAvatar :: Maybe T.Text
+                , mUserName
+                , mPass
+                , (BS.toString . makeHash . BS.toByteString') (userName <> userPass))
+            u <- queryWithExcept pool
+                (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
+                (mUserName, mFirstName, mLastName)
+            liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
+            return $ A.toJSON (u :: [User])
+        _ -> throwError WrongQueryParameter
 
 findToken ::
     ( MonadReader env m
@@ -190,11 +191,13 @@ userNewPass ::
     -> m A.Value
 userNewPass param = do
     env <- ask
-    let mUserName = getParam "name" param
-    let mPass = getParam "pass" param
-    let mNewPass = getParam "new_pass" param
-    case sequence [mUserName,mPass,mNewPass] of
+    mUserName <- parseParam "name" param
+    mPass <- parseParam "pass" param
+    mNewPass <- parseParam "new_pass" param
+
+    case sequence ([mUserName,mPass,mNewPass] :: [Maybe T.Text]) of
         Just [uName,uPass,uNewPass] -> do
+            when (T.null uNewPass) (throwError WrongQueryParameter)
             let pool = dbConn env
             isUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
@@ -206,11 +209,13 @@ userNewPass param = do
             unless (maybe False fromOnly $ listToMaybe isPass) (throwError WrongPass)
             _ <- execWithExcept pool
                 (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
-                (uNewPass,makeHash (uName <> uNewPass),uName)
+                ( uNewPass
+                , (BS.toString . makeHash . BS.toByteString') (uName <> uNewPass)
+                , uName)
             u <- queryWithExcept pool
                 (Query "SELECT * FROM Users WHERE UserName = ? ;")
                 [uName]
-            liftIO $ Logger.info (Logger.lConfig env) $ BS.toString $
-                "Change password for user: " <> uName
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Change password for user: " <> T.unpack uName
             return $ A.toJSON (u :: [User])
         _ -> throwError NotFound

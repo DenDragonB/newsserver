@@ -164,13 +164,6 @@ execWithExcept pool querystring q = do
                     $ BS.toString msg
                 throwError Exceptions.WrongQueryParameter
 
-makeArray :: BS.ByteString -> BS.ByteString
-makeArray = BS.fromString . map func . BS.toString where
-    func c = case c of
-        '[' -> '{'
-        ']' -> '}'
-        _   -> c
-
 delBracketStart :: BS.ByteString -> BS.ByteString
 delBracketStart bs = if isBracket (BS.take 1 bs) then BS.drop 1 bs else bs
 
