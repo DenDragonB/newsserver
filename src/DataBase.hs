@@ -11,12 +11,12 @@ import           GHC.Generics
 import           Control.Exception
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import qualified Data.ByteString.Conversion as BS
 import qualified Data.ByteString.UTF8       as BS
+import           Text.Read                  (readMaybe)
+
 import           Data.Int
 import           Data.Maybe
 import           Data.Pool
-import           Data.Time
 import           Database.PostgreSQL.Simple
 
 import qualified Exceptions
@@ -63,63 +63,46 @@ instance MyDatabase IO where
     queryDBsafe pool qstring qdata = withResource pool $ \conn -> query conn qstring qdata
     execDBsafe pool qstring qdata = withResource pool $ \conn -> execute conn qstring qdata
 
-getLimitOffset :: [( BS.ByteString , Maybe BS.ByteString )] -> String
-getLimitOffset param = limit <> offset
-    where
-        l = fromMaybe (0 :: Int) (getParam "limit" param >>= BS.fromByteString)
-        p = fromMaybe (0 :: Int) (getParam "page" param >>= BS.fromByteString)
-        limit = if l <= 0 then ""
-            else " LIMIT " <> show l
-        offset = if p <= 0 then ""
-            else " OFFSET " <> show (l*(p-1))
-
-getLimitOffsetBS :: [( BS.ByteString , Maybe BS.ByteString )] -> BS.ByteString
+getLimitOffsetBS :: [( String , Maybe String )] -> BS.ByteString
 getLimitOffsetBS param = limit <> offset
     where
-        l = fromMaybe (0 :: Int) (getParam "limit" param >>= BS.fromByteString)
-        p = fromMaybe (0 :: Int) (getParam "page" param >>= BS.fromByteString)
+        l = maybe (0 :: Int) read (getParam "limit" param)
+        p = maybe (0 :: Int) read (getParam "page" param)
         limit = if l <= 0 then (""  :: BS.ByteString)
             else BS.fromString $ " LIMIT "  <> show l
         offset = if p <= 0 then ("" :: BS.ByteString)
             else BS.fromString $ " OFFSET " <> show (l*(p-1))
 
-getParam :: BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> Maybe BS.ByteString
+getParam :: String -> [( String , Maybe String )] -> Maybe String
 getParam name = foldr (func name) Nothing
     where
         func nm (pn,pe) ini = if pn /= nm
             then ini
             else pe
 
+getParamList :: String -> [( String , Maybe String )] -> Maybe [String]
+getParamList name ps = splitCommas . delBracketStart . delBracketEnd <$> getParam name ps
+
 parseParam ::
     ( MonadError Exceptions.Errors m
-    , BS.FromByteString a)
-    => BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> m (Maybe a)
+    , Read a)
+    => String -> [( String , Maybe String )] -> m (Maybe a)
 parseParam name prms = do
     case getParam name prms of
         Nothing -> return Nothing
-        Just bspar -> case BS.fromByteString bspar of
-            Nothing -> throwError (Exceptions.ParametrParseError $ BS.toString name)
-            mpar -> return mpar
+        Just bspar -> case readMaybe bspar of
+            Nothing -> throwError (Exceptions.ParametrParseError name)
+            mpar    -> return mpar
 
-parseParamDelBracket ::
+parseParamList ::
     ( MonadError Exceptions.Errors m
-    , BS.FromByteString a)
-    => BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> m (Maybe a)
-parseParamDelBracket name prms = do
-    case getParam name prms of
+    , Read a)
+    => String -> [( String , Maybe String )] -> m (Maybe [a])
+parseParamList name prms = do
+    case getParamList name prms of
         Nothing -> return Nothing
-        Just bspar -> case (BS.fromByteString . delBracketStart . delBracketEnd) bspar of
-            Nothing -> throwError (Exceptions.ParametrParseError $ BS.toString name)
-            mpar -> return mpar
-
-parseParamDay ::
-    MonadError Exceptions.Errors m
-    => BS.ByteString -> [( BS.ByteString , Maybe BS.ByteString )] -> m (Maybe Day)
-parseParamDay name prms = do
-    case getParam name prms of
-        Nothing -> return Nothing
-        Just bspar -> case toDay bspar of
-            Nothing -> throwError (Exceptions.ParametrParseError $ BS.toString name)
+        Just bspar -> case mapM readMaybe bspar of
+            Nothing -> throwError (Exceptions.ParametrParseError name)
             mpar -> return mpar
 
 queryWithExcept ::
@@ -164,20 +147,18 @@ execWithExcept pool querystring q = do
                     $ BS.toString msg
                 throwError Exceptions.WrongQueryParameter
 
-delBracketStart :: BS.ByteString -> BS.ByteString
-delBracketStart bs = if isBracket (BS.take 1 bs) then BS.drop 1 bs else bs
+delBracketStart :: String -> String
+delBracketStart xs = if isBracket x then tail xs else xs where
+    x = listToMaybe xs
 
-delBracketEnd :: BS.ByteString -> BS.ByteString
-delBracketEnd bs = if isBracket (BS.drop (BS.length bs - 1) bs) then BS.take (BS.length bs - 1) bs else bs
+delBracketEnd :: String -> String
+delBracketEnd xs = if isBracket x then init xs else xs where
+    x = listToMaybe $ reverse xs
 
-isBracket :: BS.ByteString -> Bool
-isBracket bs = case BS.decode bs of
-    Just (c,_) -> c `elem` ['[',']','{','}']
-    _          -> False
+isBracket :: Maybe Char -> Bool
+isBracket mc = case mc of
+    Just c -> c `elem` ['[',']','{','}']
+    _      -> False
 
-toDay :: BS.ByteString -> Maybe Day
-toDay bs =
-    let year = fromMaybe 0 $ BS.fromByteString $ BS.take 4 bs
-        month = fromMaybe 0 $ BS.fromByteString $ (BS.take 2 . snd . BS.splitAt 5) bs
-        day = fromMaybe 0 $ BS.fromByteString $ BS.drop 8 bs
-    in fromGregorianValid year month day
+splitCommas :: String -> [String]
+splitCommas s = words $ map (\c -> if c == ',' then ' ' else c) s

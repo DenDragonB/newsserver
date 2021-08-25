@@ -10,7 +10,6 @@ import           Database.PostgreSQL.Simple.Types
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (listToMaybe)
 import           Data.Text                          (Text, pack)
 import           GHC.Generics
@@ -34,7 +33,7 @@ authorAdd ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 authorAdd param = do
     env <- ask
@@ -44,8 +43,8 @@ authorAdd param = do
     case admin of
         Just (_, True ) -> do
             muid <- parseParam "user_id" param
-            mabout <- parseParam "about" param
-            case sequence (muid :: Maybe Int,mabout :: Maybe Text) of
+            let mabout = getParam "about" param
+            case sequence (muid :: Maybe Int,mabout) of
                 Just (uid,queryAbout) -> do
                     let pool = dbConn env
                     isUser <- queryWithExcept pool
@@ -74,7 +73,7 @@ authorEdit ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 authorEdit param = do
     env <- ask
@@ -82,7 +81,7 @@ authorEdit param = do
     case admin of
         Just (_, True ) -> do
             uid <- parseParam "user_id" param
-            queryAbout <- parseParam "about" param
+            let queryAbout = getParam "about" param
             maid <- parseParam "id" param
             case maid :: Maybe Int of
                 Nothing -> throwError WrongQueryParameter
@@ -97,7 +96,7 @@ authorEdit param = do
                             <> "UserId = COALESCE (?,userid),"
                             <> "About = COALESCE (?,about)"
                             <> "WHERE Id = ?;")
-                        (uid :: Maybe Int,queryAbout :: Maybe Text,aid)
+                        (uid :: Maybe Int,queryAbout,aid)
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Edit author id: " <> show aid
                     author <- queryWithExcept pool
@@ -112,7 +111,7 @@ authorGet ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 authorGet param = do
     env <- ask
@@ -138,7 +137,7 @@ authorDelete ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 authorDelete param = do
     env <- ask

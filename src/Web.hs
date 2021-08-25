@@ -9,6 +9,7 @@ import qualified Data.Aeson                   as A
 import qualified Data.Aeson.Encoding.Internal as A
 import qualified Data.ByteString.Lazy.UTF8    as BSLazy
 import qualified Data.ByteString.UTF8         as BS
+
 import           GHC.Generics
 import           Network.HTTP.Types
 import           Network.Wai
@@ -96,39 +97,43 @@ runAnswear env req = runExceptT $ runReaderT (answear req) env
 answear :: Request -> Answear
 answear request = do
     env <- ask
-    case rawPathInfo request of
+    case (BS.toString . rawPathInfo) request of
         "/database.migrate" -> do
             liftIO $ DataBase.migrateDB (DataBase.dbConn env)
             return $ A.String "DataBase updated"
         -- Users API
-        "/user.add"    -> DataBase.userAdd $ (parseQuery . rawQueryString) request
-        "/user.get"    -> DataBase.userGet $ (parseQuery . rawQueryString) request
-        "/user.delete" -> DataBase.userDel $ (parseQuery . rawQueryString) request
-        "/user.change_pass" -> DataBase.userNewPass $ (parseQuery . rawQueryString) request
+        "/user.add"    -> DataBase.userAdd $ (paramToText . parseQuery . rawQueryString) request
+        "/user.get"    -> DataBase.userGet $ (paramToText . parseQuery . rawQueryString) request
+        "/user.delete" -> DataBase.userDel $ (paramToText . parseQuery . rawQueryString) request
+        "/user.change_pass" -> DataBase.userNewPass $ (paramToText . parseQuery . rawQueryString) request
         -- Author API
-        "/author.add"    -> DataBase.authorAdd $ (parseQuery . rawQueryString) request
-        "/author.edit"   -> DataBase.authorEdit $ (parseQuery . rawQueryString) request
-        "/author.get"    -> DataBase.authorGet $ (parseQuery . rawQueryString) request
-        "/author.delete" -> DataBase.authorDelete $ (parseQuery . rawQueryString) request
+        "/author.add"    -> DataBase.authorAdd $ (paramToText . parseQuery . rawQueryString) request
+        "/author.edit"   -> DataBase.authorEdit $ (paramToText . parseQuery . rawQueryString) request
+        "/author.get"    -> DataBase.authorGet $ (paramToText . parseQuery . rawQueryString) request
+        "/author.delete" -> DataBase.authorDelete $ (paramToText . parseQuery . rawQueryString) request
         -- Category API
-        "/category.add"    -> DataBase.categoryAdd $ (parseQuery . rawQueryString) request
-        "/category.edit"   -> DataBase.categoryEdit $ (parseQuery . rawQueryString) request
-        "/category.get"    -> DataBase.categoryGet $ (parseQuery . rawQueryString) request
-        "/category.delete" -> DataBase.categoryDelete $ (parseQuery . rawQueryString) request
+        "/category.add"    -> DataBase.categoryAdd $ (paramToText . parseQuery . rawQueryString) request
+        "/category.edit"   -> DataBase.categoryEdit $ (paramToText . parseQuery . rawQueryString) request
+        "/category.get"    -> DataBase.categoryGet $ (paramToText . parseQuery . rawQueryString) request
+        "/category.delete" -> DataBase.categoryDelete $ (paramToText . parseQuery . rawQueryString) request
         -- Tags API
-        "/tag.add"    -> DataBase.tagAdd $ (parseQuery . rawQueryString) request
-        "/tag.edit"   -> DataBase.tagEdit $ (parseQuery . rawQueryString) request
-        "/tag.get"    -> DataBase.tagGet $ (parseQuery . rawQueryString) request
-        "/tag.delete" -> DataBase.tagDelete $ (parseQuery . rawQueryString) request
+        "/tag.add"    -> DataBase.tagAdd $ (paramToText . parseQuery . rawQueryString) request
+        "/tag.edit"   -> DataBase.tagEdit $ (paramToText . parseQuery . rawQueryString) request
+        "/tag.get"    -> DataBase.tagGet $ (paramToText . parseQuery . rawQueryString) request
+        "/tag.delete" -> DataBase.tagDelete $ (paramToText . parseQuery . rawQueryString) request
         -- Drafts API
-        "/draft.add"    -> DataBase.draftAdd $ (parseQuery . rawQueryString) request
-        "/draft.edit"   -> DataBase.draftEdit $ (parseQuery . rawQueryString) request
-        "/draft.get"    -> DataBase.draftGet $ (parseQuery . rawQueryString) request
-        "/draft.delete" -> DataBase.draftDelete $ (parseQuery . rawQueryString) request
-        "/draft.publish" -> DataBase.draftPublish $ (parseQuery . rawQueryString) request
+        "/draft.add"    -> DataBase.draftAdd $ (paramToText . parseQuery . rawQueryString) request
+        "/draft.edit"   -> DataBase.draftEdit $ (paramToText . parseQuery . rawQueryString) request
+        "/draft.get"    -> DataBase.draftGet $ (paramToText . parseQuery . rawQueryString) request
+        "/draft.delete" -> DataBase.draftDelete $ (paramToText . parseQuery . rawQueryString) request
+        "/draft.publish" -> DataBase.draftPublish $ (paramToText . parseQuery . rawQueryString) request
         -- News API
-        "/posts.get" -> DataBase.postGet $ (parseQuery . rawQueryString) request
+        "/posts.get" -> DataBase.postGet $ (paramToText . parseQuery . rawQueryString) request
         -- Photos API
-        str   -> if BS.take 7 str == "/photos"
-            then DataBase.fileGet $ tail $ BS.toString str
+        str   -> if take 7 str == "/photos"
+            then DataBase.fileGet $ tail str
             else throwError NotFound
+
+paramToText :: [( BS.ByteString , Maybe BS.ByteString )] -> [( String , Maybe String )]
+paramToText = map fun where
+    fun (a,ma) = (BS.toString a, BS.toString <$> ma)

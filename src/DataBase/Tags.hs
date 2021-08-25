@@ -10,9 +10,8 @@ import           Database.PostgreSQL.Simple.Types
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (isNothing, listToMaybe)
-import           Data.Text                          (Text, pack, unpack)
+import           Data.Text                          (Text, pack)
 import           GHC.Generics
 
 import           DataBase
@@ -33,15 +32,15 @@ tagAdd ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 tagAdd param = do
     env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            mname <- parseParam "name" param
-            case mname :: Maybe Text of
+            let mname = getParam "name" param
+            case mname of
                 Nothing -> throwError WrongQueryParameter
                 Just tagname -> do
                     let pool = dbConn env
@@ -53,7 +52,7 @@ tagAdd param = do
                         (Query "INSERT INTO Tags (Tag) VALUES (?);")
                         [tagname]
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Tag: " <> unpack tagname
+                        "Add Tag: " <> tagname
                     tag <- queryWithExcept pool
                         (Query "SELECT * FROM Tags WHERE Tag = ? ;")
                         [tagname]
@@ -66,7 +65,7 @@ tagEdit ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 tagEdit param = do
     env <- ask
@@ -74,7 +73,7 @@ tagEdit param = do
     case admin of
         Just (_, True ) -> do
             tid <- parseParam "id" param
-            tname <- parseParam "name" param
+            let tname = getParam "name" param
             when (isNothing tid || isNothing tname) $ throwError WrongQueryParameter
 
             let pool = dbConn env
@@ -83,7 +82,7 @@ tagEdit param = do
                 [tid :: Maybe Int]
             isTagName <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ? );")
-                [tname :: Maybe Text]
+                [tname]
             unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
             when (maybe False fromOnly $ listToMaybe isTagName) (throwError ObjectExists)
             _ <- execWithExcept pool
@@ -103,7 +102,7 @@ tagGet ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 tagGet param = do
     env <- ask
@@ -112,14 +111,14 @@ tagGet param = do
         Just (True , _ ) -> do
             let pool = dbConn env
             tid <- parseParam "id" param
-            tname <- parseParam "name" param
+            let tname = getParam "name" param
             tag <- queryWithExcept pool
                 (Query $ "SELECT id,tag FROM Tags WHERE"
                     <> "(id = COALESCE (?, id))"
                     <> "AND (tag = COALESCE (?, tag))"
                     <> "ORDER BY tag "
                     <> getLimitOffsetBS param <> ";")
-                (tid :: Maybe Int,tname :: Maybe Text)
+                (tid :: Maybe Int, tname)
             return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 
@@ -129,7 +128,7 @@ tagDelete ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 tagDelete param = do
     env <- ask

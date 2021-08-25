@@ -14,7 +14,6 @@ import           GHC.Generics                       (Generic)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import qualified Data.ByteString.Conversion         as BS
 import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (fromMaybe)
 import           Data.Text                          (Text)
@@ -69,25 +68,25 @@ postGet ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 postGet param = do
     env <- ask
-    mtoken <- parseParam "token" param
-    case sequence [mtoken :: Maybe Text] of
+    let mtoken = getParam "token" param
+    case mtoken of
         Just _ -> do
             let pool = dbConn env
             let nsort = fromMaybe "" $ getParam "sort_by" param
             nid <- parseParam "id" param
-            ndate <- parseParamDay "created_at" param
-            ndateLT <- parseParamDay "created_at__lt" param
-            ndateGT <- parseParamDay "created_at__gt" param
-            nauthor <- parseParam "author" param
-            ntag <- parseParamDelBracket "tag" param
-            ntagAll <- parseParamDelBracket "tags__all" param
-            ntagIn <- parseParamDelBracket "tags__in" param
-            nheader <- parseParam "header" param
-            ncont <- parseParam "content" param
+            ndate <- parseParam "created_at" param
+            ndateLT <- parseParam "created_at__lt" param
+            ndateGT <- parseParam "created_at__gt" param
+            let nauthor = getParam "author" param
+            ntag <- parseParamList "tag" param
+            ntagAll <- parseParamList "tags__all" param
+            ntagIn <- parseParamList "tags__in" param
+            let nheader = getParam "header" param
+            let ncont = getParam "content" param
             news <- queryWithExcept pool
                 (Query $ "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
                     <> "n.Content, n.MainPhoto, n.Photos  FROM News n"
@@ -119,19 +118,19 @@ postGet param = do
                     <> getLimitOffsetBS param
                     <> ";")
                 ( nid :: Maybe Int
-                , ndate
-                , ndateLT
-                , ndateGT
-                , nauthor :: Maybe Text
-                , PGArray . BS.fromList <$> (ntag :: Maybe (BS.List Int))
-                , PGArray . BS.fromList <$> (ntagAll :: Maybe (BS.List Int))
-                , PGArray . BS.fromList <$> (ntagIn :: Maybe (BS.List Int))
-                , nheader :: Maybe Text
-                , ncont :: Maybe Text)
+                , ndate :: Maybe Day
+                , ndateLT :: Maybe Day
+                , ndateGT :: Maybe Day
+                , nauthor
+                , PGArray <$> (ntag :: Maybe [Int])
+                , PGArray <$> (ntagAll :: Maybe [Int])
+                , PGArray <$> (ntagIn :: Maybe [Int])
+                , nheader
+                , ncont )
             return $ A.toJSON (newsToJSON <$> news)
         _ -> throwError NotFound
 
-addSortBy :: BS.ByteString -> BS.ByteString
+addSortBy :: String -> BS.ByteString
 addSortBy val = case val of
     "author"   -> " ORDER BY u.UserName "
     "date"     -> " ORDER BY n.RegDate "

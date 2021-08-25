@@ -11,7 +11,6 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Crypto.BCrypt
 import qualified Data.Aeson                       as A
-import qualified Data.ByteString.Conversion       as BS
 import qualified Data.ByteString.UTF8             as BS
 import           Data.Maybe
 import qualified Data.Text                        as T
@@ -60,19 +59,19 @@ userAdd ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 userAdd param = do
 
-    mFirstName <- parseParam "first_name" param
-    mLastName <- parseParam "last_name" param
-    mUserName <- parseParam "name" param
-    mAvatar <- parseParam "avatar" param
-    mPass <- parseParam "pass" param
+    let mFirstName = getParam "first_name" param
+    let mLastName = getParam "last_name" param
+    let mUserName = getParam "name" param
+    let mAvatar = getParam "avatar" param
+    let mPass = getParam "pass" param
 
     case sequence [mUserName,mPass] of
         Just [userName, userPass] -> do
-            when (T.null userName || T.null userPass) (throwError WrongQueryParameter)
+            when (null userName || null userPass) (throwError WrongQueryParameter)
 
             env <- ask
             let pool = dbConn env
@@ -84,12 +83,12 @@ userAdd param = do
                 (Query "INSERT INTO Users "
                 <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
                 <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
-                ( mFirstName :: Maybe T.Text
-                , mLastName :: Maybe T.Text
-                , mAvatar :: Maybe T.Text
+                ( mFirstName
+                , mLastName
+                , mAvatar
                 , mUserName
                 , mPass
-                , (BS.toString . makeHash . BS.toByteString') (userName <> userPass))
+                , (BS.toString . makeHash . BS.fromString) (userName <> userPass))
             u <- queryWithExcept pool
                 (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
                 (mUserName, mFirstName, mLastName)
@@ -103,14 +102,14 @@ findToken ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m (Maybe (Bool,Bool))
 findToken param = do
     env <- ask
-    mToken <- parseParam "token" param
-    let queryToken = fromMaybe "" (mToken :: Maybe T.Text)
+    let mToken = getParam "token" param
+    let queryToken = fromMaybe "" mToken
     liftIO $ Logger.debug (Logger.lConfig env) $
-                        "Request from user with token: " <> T.unpack queryToken
+                        "Request from user with token: " <> queryToken
     if isNothing mToken
         then return Nothing
         else do
@@ -131,7 +130,7 @@ userGet ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 userGet param = do
     queryToken <- findToken param
@@ -139,9 +138,9 @@ userGet param = do
         then throwError NotFound
         else do
             env <- ask
-            mFirstName <- parseParam "first_name" param
-            mLastName <- parseParam "last_name" param
-            mUserName <- parseParam "name" param
+            let mFirstName = getParam "first_name" param
+            let mLastName = getParam "last_name" param
+            let mUserName = getParam "name" param
             let pool = dbConn env
             u <- queryWithExcept pool
                 (Query $ "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
@@ -150,9 +149,9 @@ userGet param = do
                     <> "AND (LastName = COALESCE (?,LastName))"
                     <> "ORDER BY UserName "
                     <> getLimitOffsetBS param <> ";")
-                ( mUserName :: Maybe T.Text
-                , mFirstName :: Maybe T.Text
-                , mLastName :: Maybe T.Text)
+                ( mUserName 
+                , mFirstName
+                , mLastName)
             return $ A.toJSON (u :: [User])
 
 userDel ::
@@ -161,7 +160,7 @@ userDel ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 userDel param = do
     admin <- findToken param
@@ -187,17 +186,17 @@ userNewPass ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 userNewPass param = do
     env <- ask
-    mUserName <- parseParam "name" param
-    mPass <- parseParam "pass" param
-    mNewPass <- parseParam "new_pass" param
+    let mUserName = getParam "name" param
+    let mPass = getParam "pass" param
+    let mNewPass = getParam "new_pass" param
 
-    case sequence ([mUserName,mPass,mNewPass] :: [Maybe T.Text]) of
+    case sequence [mUserName,mPass,mNewPass] of
         Just [uName,uPass,uNewPass] -> do
-            when (T.null uNewPass) (throwError WrongQueryParameter)
+            when (null uNewPass) (throwError WrongQueryParameter)
             let pool = dbConn env
             isUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
@@ -210,12 +209,12 @@ userNewPass param = do
             _ <- execWithExcept pool
                 (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
                 ( uNewPass
-                , (BS.toString . makeHash . BS.toByteString') (uName <> uNewPass)
+                , (BS.toString . makeHash . BS.fromString) (uName <> uNewPass)
                 , uName)
             u <- queryWithExcept pool
                 (Query "SELECT * FROM Users WHERE UserName = ? ;")
                 [uName]
             liftIO $ Logger.info (Logger.lConfig env) $
-                "Change password for user: " <> T.unpack uName
+                "Change password for user: " <> uName
             return $ A.toJSON (u :: [User])
         _ -> throwError NotFound

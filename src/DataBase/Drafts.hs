@@ -14,11 +14,9 @@ import           GHC.Generics                       (Generic)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import qualified Data.ByteString.Conversion         as BS
-import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (fromMaybe, isNothing,
                                                      listToMaybe)
-import           Data.Text                          (Text, pack, unpack)
+import           Data.Text                          (Text, pack)
 import           Data.Time
 
 import           DataBase
@@ -74,12 +72,12 @@ draftAdd ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 draftAdd param = do
     env <- ask
-    mtoken <- parseParam "token" param
-    case mtoken :: Maybe Text of
+    let mtoken = getParam "token" param
+    case mtoken of
         Just token -> do
             let pool = dbConn env
             authors <- queryWithExcept pool
@@ -88,19 +86,19 @@ draftAdd param = do
                 [token]
             case (authors :: [Only Int]) of
                 [author] -> do
-                    mheader <- parseParam "header" param
+                    let mheader = getParam "header" param
                     mcat <- parseParam "category_id" param
                     when (isNothing mheader || isNothing mcat) $ throwError WrongQueryParameter
-                    let queryHeader = fromMaybe "" (mheader :: Maybe Text)
+                    let queryHeader = fromMaybe "" mheader
                     let cat = fromMaybe 0 (mcat :: Maybe Int)
-                    mtags <- parseParamDelBracket "tags_id" param
-                    mcont <- parseParam "content" param
-                    mmph <- parseParam "main_photo" param
-                    mphs <- parseParamDelBracket "photos" param
-                    let tags = maybe [] BS.fromList (mtags :: Maybe (BS.List Int))
-                    let cont = fromMaybe "" (mcont :: Maybe Text)
-                    let mph = fromMaybe "" (mmph :: Maybe Text)
-                    let phs = maybe [] BS.fromList (mphs :: Maybe (BS.List Text))
+                    mtags <- parseParamList "tags_id" param
+                    let mcont = getParam "content" param
+                    let mmph = getParam "main_photo" param
+                    let mphs = getParamList "photos" param
+                    let tags = fromMaybe [] (mtags :: Maybe [Int])
+                    let cont = fromMaybe "" mcont
+                    let mph = fromMaybe "" mmph
+                    let phs = fromMaybe [] mphs
                     dids <- queryWithExcept pool
                         (Query "INSERT INTO Drafts "
                             <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
@@ -108,7 +106,7 @@ draftAdd param = do
                         (queryHeader, fromOnly author,
                             cat,PGArray tags,cont,mph, PGArray phs)
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Draft: " <> unpack queryHeader
+                        "Add Draft: " <> queryHeader
                     draft <- queryWithExcept pool
                         (Query "SELECT * FROM Drafts WHERE Id = ? ;")
                         $ fromOnly <$> (dids :: [Only Int])
@@ -122,14 +120,14 @@ draftEdit ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 draftEdit param = do
     env <- ask
-    mtoken <- parseParam "token" param
+    let mtoken = getParam "token" param
     mdid <- parseParam "id" param
     when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let token = fromMaybe "" mtoken
     let did = fromMaybe 0 (mdid :: Maybe Int)
 
     let pool = dbConn env
@@ -144,12 +142,12 @@ draftEdit param = do
         (did,author)
     unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
 
-    queryHeader <- parseParam "header" param
+    let queryHeader = getParam "header" param
     cat <- parseParam "category_id" param
-    tags <- parseParamDelBracket "tags_id" param
-    cont <- parseParam "content" param
-    mph <- parseParam "main_photo" param
-    phs <- parseParamDelBracket "photos" param
+    tags <- parseParamList "tags_id" param
+    let cont = getParam "content" param
+    let mph = getParam "main_photo" param
+    let phs = getParamList "photos" param
 
     _ <- execWithExcept pool
         (Query "UPDATE Drafts SET "
@@ -160,12 +158,12 @@ draftEdit param = do
             <> "MainPhoto = COALESCE (?, MainPhoto ),"
             <> "Photos = COALESCE (?, Photos )"
             <> "WHERE Id = ?;")
-        ( queryHeader :: Maybe Text
+        ( queryHeader
         , cat :: Maybe Int
-        , PGArray . BS.fromList <$> (tags :: Maybe (BS.List Int))
-        , cont :: Maybe Text
-        , mph :: Maybe Text
-        , PGArray . BS.fromList <$> (phs:: Maybe (BS.List Text))
+        , PGArray <$> (tags :: Maybe [Int])
+        , cont
+        , mph
+        , PGArray <$> phs
         , did)
     liftIO $ Logger.info (Logger.lConfig env) $
         "Edit Draft id: " <> show did
@@ -180,14 +178,14 @@ draftGet ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 draftGet param = do
     env <- ask
-    mtoken <- parseParam "token" param
+    let mtoken = getParam "token" param
     mdid <- parseParam "id" param
     when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let token = fromMaybe "" mtoken
     let did = fromMaybe 0 (mdid :: Maybe Int)
 
     let pool = dbConn env
@@ -212,14 +210,14 @@ draftDelete ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 draftDelete param = do
     env <- ask
-    mtoken <- parseParam "token" param
+    let mtoken = getParam "token" param
     mdid <- parseParam "id" param
     when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let token = fromMaybe "" mtoken
     let did = fromMaybe 0 (mdid :: Maybe Int)
 
     let pool = dbConn env
@@ -246,14 +244,14 @@ draftPublish ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 draftPublish param = do
     env <- ask
-    mtoken <- parseParam "token" param
+    let mtoken = getParam "token" param
     mdid <- parseParam "id" param
     when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" (mtoken :: Maybe Text)
+    let token = fromMaybe "" mtoken
     let did = fromMaybe 0 (mdid :: Maybe Int)
 
     let pool = dbConn env
@@ -286,7 +284,7 @@ draftPublish param = do
                 (nid,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Publish News id: " <> show nid
-            DB.postGet [("token", (Just . BS.toByteString') token),("id",(Just . BS.toByteString') nid)]
+            DB.postGet [("token", mtoken),("id",(Just . show) nid)]
         else do
             let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (news :: [Only Int])
             _ <- execWithExcept pool
@@ -297,7 +295,7 @@ draftPublish param = do
                 (did,nid)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Publish News id: " <> show nid
-            DB.postGet [("token",(Just . BS.toByteString') token),("id",(Just . BS.toByteString') nid)]
+            DB.postGet [("token", mtoken),("id",(Just . show) nid)]
 
 emptyDraft :: Draft
 emptyDraft = Draft

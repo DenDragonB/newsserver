@@ -10,10 +10,9 @@ import           Database.PostgreSQL.Simple.Types
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import qualified Data.ByteString.UTF8               as BS
 import           Data.Maybe                         (fromMaybe, isNothing,
                                                      listToMaybe)
-import           Data.Text                          (Text, pack, unpack)
+import           Data.Text                          (Text, pack)
 import           GHC.Generics
 
 import           DataBase
@@ -35,17 +34,17 @@ categoryAdd ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 categoryAdd param = do
     env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            mname <- parseParam "name" param
+            let mname = getParam "name" param
             mpar <-  parseParam "parent_id" param
             let par = fromMaybe 0 (mpar :: Maybe Int)
-            case mname :: Maybe Text of
+            case mname of
                 Nothing -> throwError WrongQueryParameter
                 Just catName -> do
                     let pool = dbConn env
@@ -58,12 +57,12 @@ categoryAdd param = do
                     when (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectExists)
                     unless (par == 0 || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
                     liftIO $ Logger.debug (Logger.lConfig env) $
-                        "Try add category name: " <> unpack catName <> "; parent: "<> show par
+                        "Try add category name: " <> catName <> "; parent: "<> show par
                     _ <- execWithExcept pool
                         (Query "INSERT INTO Categories (CatName, Parent) VALUES (?,?);")
                         (catName,par)
                     liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add category name: " <> unpack catName
+                        "Add category name: " <> catName
                     cat <- queryWithExcept pool
                         (Query "SELECT * FROM Categories WHERE CatName = ? ;")
                         [catName]
@@ -76,7 +75,7 @@ categoryEdit ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 categoryEdit param = do
     env <- ask
@@ -84,7 +83,7 @@ categoryEdit param = do
     case admin of
         Just (_, True ) -> do
             mcid <- parseParam "id" param
-            cname <- parseParam "name" param
+            let cname = getParam "name" param
             par <- parseParam "parent_id" param
             case mcid :: Maybe Int of
                 Nothing -> throwError WrongQueryParameter
@@ -95,7 +94,7 @@ categoryEdit param = do
                         [cid]
                     isCatName <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
-                        [cname :: Maybe Text]
+                        [cname]
                     isPar <- queryWithExcept pool
                         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
                         [par :: Maybe Int]
@@ -123,7 +122,7 @@ categoryGet ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 categoryGet param = do
     env <- ask
@@ -132,7 +131,7 @@ categoryGet param = do
         Just (True , _ ) -> do
             let pool = dbConn env
             cid <- parseParam "id" param
-            cname <- parseParam "name" param
+            let cname = getParam "name" param
             cpar <- parseParam "parent_id" param
             cat <- queryWithExcept pool
                 (Query $ "SELECT id,CatName,Parent FROM Categories WHERE"
@@ -141,7 +140,7 @@ categoryGet param = do
                     <> "AND (Parent = COALESCE (?, Parent))"
                     <> "ORDER BY Parent,CatName,Id "
                     <> getLimitOffsetBS param <> ";")
-                (cid :: Maybe Int, cname :: Maybe Text, cpar :: Maybe Int)
+                (cid :: Maybe Int, cname, cpar :: Maybe Int)
             return $ A.toJSON (cat :: [Category])
         _ -> throwError NotFound
 
@@ -151,7 +150,7 @@ categoryDelete ::
     , HasLogger env
     , MonadError Errors m
     , MonadIO m
-    ) => [( BS.ByteString , Maybe BS.ByteString )]
+    ) => [( String , Maybe String )]
     -> m A.Value
 categoryDelete param = do
     env <- ask
@@ -176,5 +175,5 @@ categoryDelete param = do
                         [cid]
                     liftIO $ Logger.info (Logger.lConfig env) $
                         "Delete category id: " <> show cid
-                    return $ A.String $ "Category with id " <> (pack . show) cid<>" deleted"
+                    return $ A.String $ "Category with id " <> (pack . show) cid <>" deleted"
         _ -> throwError NotFound
