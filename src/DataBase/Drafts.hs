@@ -14,11 +14,11 @@ import           GHC.Generics                       (Generic)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import           Data.Maybe                         (fromMaybe, isNothing,
-                                                     listToMaybe)
+import           Data.Maybe                         (fromMaybe, listToMaybe)
 import           Data.Text                          (Text, pack)
 import           Data.Time
 
+import           Data.Function
 import           DataBase
 import qualified DataBase.Posts                     as DB
 import           Exceptions
@@ -87,10 +87,11 @@ draftAdd param = do
             case (authors :: [Only Int]) of
                 [author] -> do
                     let mheader = getParam "header" param
+                    queryHeader <- mheader & fromMaybeM WrongQueryParameter
+
                     mcat <- parseParam "category_id" param
-                    when (isNothing mheader || isNothing mcat) $ throwError WrongQueryParameter
-                    let queryHeader = fromMaybe "" mheader
-                    let cat = fromMaybe 0 (mcat :: Maybe Int)
+                    cat <- (mcat :: Maybe Int) & fromMaybeM WrongQueryParameter
+
                     mtags <- parseParamList "tags_id" param
                     let mcont = getParam "content" param
                     let mmph = getParam "main_photo" param
@@ -124,11 +125,12 @@ draftEdit ::
     -> m A.Value
 draftEdit param = do
     env <- ask
+
     let mtoken = getParam "token" param
+    token <- mtoken & fromMaybeM NotFound
+
     mdid <- parseParam "id" param
-    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" mtoken
-    let did = fromMaybe 0 (mdid :: Maybe Int)
+    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool
@@ -182,11 +184,12 @@ draftGet ::
     -> m A.Value
 draftGet param = do
     env <- ask
+
     let mtoken = getParam "token" param
+    token <- mtoken & fromMaybeM NotFound
+
     mdid <- parseParam "id" param
-    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" mtoken
-    let did = fromMaybe 0 (mdid :: Maybe Int)
+    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool
@@ -214,11 +217,12 @@ draftDelete ::
     -> m A.Value
 draftDelete param = do
     env <- ask
+
     let mtoken = getParam "token" param
+    token <- mtoken & fromMaybeM NotFound
+
     mdid <- parseParam "id" param
-    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" mtoken
-    let did = fromMaybe 0 (mdid :: Maybe Int)
+    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool
@@ -248,11 +252,12 @@ draftPublish ::
     -> m A.Value
 draftPublish param = do
     env <- ask
+
     let mtoken = getParam "token" param
+    token <- mtoken & fromMaybeM NotFound
+
     mdid <- parseParam "id" param
-    when (isNothing mtoken || isNothing mdid) $ throwError NotFound
-    let token = fromMaybe "" mtoken
-    let did = fromMaybe 0 (mdid :: Maybe Int)
+    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool

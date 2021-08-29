@@ -162,3 +162,6 @@ isBracket mc = case mc of
 
 splitCommas :: String -> [String]
 splitCommas s = words $ map (\c -> if c == ',' then ' ' else c) s
+
+fromMaybeM :: (Exception e, Applicative f) => e -> Maybe a -> f a
+fromMaybeM err = maybe (throw err) pure
