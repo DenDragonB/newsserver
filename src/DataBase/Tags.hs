@@ -12,6 +12,7 @@ import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import           Data.Maybe                         (isNothing, listToMaybe)
 import           Data.Text                          (Text, pack)
+import           Data.Function     
 import           GHC.Generics
 
 import           DataBase
@@ -40,23 +41,22 @@ tagAdd param = do
     case admin of
         Just (_, True ) -> do
             let mname = getParam "name" param
-            case mname of
-                Nothing -> throwError WrongQueryParameter
-                Just tagname -> do
-                    let pool = dbConn env
-                    isTag <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ?);")
-                        [tagname]
-                    when (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectExists)
-                    _ <- execWithExcept pool
-                        (Query "INSERT INTO Tags (Tag) VALUES (?);")
-                        [tagname]
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Tag: " <> tagname
-                    tag <- queryWithExcept pool
-                        (Query "SELECT * FROM Tags WHERE Tag = ? ;")
-                        [tagname]
-                    return $ A.toJSON (tag :: [Tag])
+            tagname <- mname & fromMaybeM WrongQueryParameter
+
+            let pool = dbConn env
+            isTag <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ?);")
+                [tagname]
+            when (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectExists)
+            _ <- execWithExcept pool
+                (Query "INSERT INTO Tags (Tag) VALUES (?);")
+                [tagname]
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Add Tag: " <> tagname
+            tag <- queryWithExcept pool
+                (Query "SELECT * FROM Tags WHERE Tag = ? ;")
+                [tagname]
+            return $ A.toJSON (tag :: [Tag])
         _ -> throwError NotFound
 
 tagEdit ::
@@ -73,8 +73,10 @@ tagEdit param = do
     case admin of
         Just (_, True ) -> do
             tid <- parseParam "id" param
+            when (isNothing tid) $ throwError WrongQueryParameter
+
             let tname = getParam "name" param
-            when (isNothing tid || isNothing tname) $ throwError WrongQueryParameter
+            when (isNothing tname) $ throwError WrongQueryParameter
 
             let pool = dbConn env
             isTag <- queryWithExcept pool
@@ -136,18 +138,17 @@ tagDelete param = do
     case admin of
         Just (_, True ) -> do
             mtid <- parseParam "id" param
-            case mtid :: Maybe Int of
-                Nothing -> throwError WrongQueryParameter
-                Just tid -> do
-                    let pool = dbConn env
-                    isTag <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Id = ? );")
-                        [tid]
-                    unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
-                    _ <- execWithExcept pool
-                        (Query "DELETE FROM Tags WHERE Id = ? ;")
-                        [tid]
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Delete Tag id: " <> show tid
-                    return $ A.String $ pack $ "Tag with id " <> show tid <> " deleted"
+            tid <- (mtid :: Maybe Int) & fromMaybeM WrongQueryParameter
+
+            let pool = dbConn env
+            isTag <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Id = ? );")
+                [tid]
+            unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
+            _ <- execWithExcept pool
+                (Query "DELETE FROM Tags WHERE Id = ? ;")
+                [tid]
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Delete Tag id: " <> show tid
+            return $ A.String $ pack $ "Tag with id " <> show tid <> " deleted"
         _ -> throwError NotFound

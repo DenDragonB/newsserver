@@ -12,6 +12,7 @@ import           Control.Monad.Reader
 import           Crypto.BCrypt
 import qualified Data.Aeson                       as A
 import qualified Data.ByteString.UTF8             as BS
+import           Data.Function                    ((&))
 import           Data.Maybe
 import qualified Data.Text                        as T
 import           Data.Time
@@ -63,38 +64,40 @@ userAdd ::
     -> m A.Value
 userAdd param = do
 
+    let mUserName = getParam "name" param
+    userName <- mUserName & fromMaybeM WrongQueryParameter
+    when (null userName) (throwError WrongQueryParameter)
+
+    let mPass = getParam "pass" param
+    userPass <- mPass & fromMaybeM WrongQueryParameter
+    when (null userPass) (throwError WrongQueryParameter)
+
     let mFirstName = getParam "first_name" param
     let mLastName = getParam "last_name" param
-    let mUserName = getParam "name" param
     let mAvatar = getParam "avatar" param
-    let mPass = getParam "pass" param
 
-    case sequence [mUserName,mPass] of
-        Just [userName, userPass] -> do
-            when (null userName || null userPass) (throwError WrongQueryParameter)
+    env <- ask
+    let pool = dbConn env
+    oldUser <- queryWithExcept pool
+        (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
+        [mUserName]
+    when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
+    _ <- execWithExcept pool
+        (Query "INSERT INTO Users "
+        <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
+        <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
+        ( mFirstName
+        , mLastName
+        , mAvatar
+        , mUserName
+        , mPass
+        , (BS.toString . makeHash . BS.fromString) (userName <> userPass))
+    u <- queryWithExcept pool
+        (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
+        (mUserName, mFirstName, mLastName)
+    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
+    return $ A.toJSON (u :: [User])
 
-            env <- ask
-            let pool = dbConn env
-            oldUser <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-                [mUserName]
-            when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
-            _ <- execWithExcept pool
-                (Query "INSERT INTO Users "
-                <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
-                <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
-                ( mFirstName
-                , mLastName
-                , mAvatar
-                , mUserName
-                , mPass
-                , (BS.toString . makeHash . BS.fromString) (userName <> userPass))
-            u <- queryWithExcept pool
-                (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-                (mUserName, mFirstName, mLastName)
-            liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
-            return $ A.toJSON (u :: [User])
-        _ -> throwError WrongQueryParameter
 
 findToken ::
     ( MonadReader env m
@@ -107,12 +110,11 @@ findToken ::
 findToken param = do
     env <- ask
     let mToken = getParam "token" param
-    let queryToken = fromMaybe "" mToken
-    liftIO $ Logger.debug (Logger.lConfig env) $
+    case mToken of
+        Nothing -> return Nothing
+        Just queryToken -> do
+            liftIO $ Logger.debug (Logger.lConfig env) $
                         "Request from user with token: " <> queryToken
-    if isNothing mToken
-        then return Nothing
-        else do
             let pool = dbConn env
             userExist <- queryWithExcept pool
                     (Query "SELECT EXISTS (SELECT id FROM Users WHERE token = ? );")
@@ -149,7 +151,7 @@ userGet param = do
                     <> "AND (LastName = COALESCE (?,LastName))"
                     <> "ORDER BY UserName "
                     <> getLimitOffsetBS param <> ";")
-                ( mUserName 
+                ( mUserName
                 , mFirstName
                 , mLastName)
             return $ A.toJSON (u :: [User])
@@ -167,17 +169,15 @@ userDel param = do
     case admin of
         Just (_,True ) -> do
             muid <- parseParam "id" param
-            case muid :: Maybe Int of
-                Nothing -> throwError WrongQueryParameter
-                Just uid -> do
-                    env <- ask
-                    let pool = dbConn env
-                    _ <- execWithExcept pool
-                        (Query "DELETE FROM Users WHERE id = ? ;")
-                        [uid]
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Delete user id: " <> show uid
-                    return $ A.String $ T.pack $ "User with id "<> show uid <>" deleted"
+            uid <- (muid :: Maybe Int) & fromMaybeM WrongQueryParameter
+            env <- ask
+            let pool = dbConn env
+            _ <- execWithExcept pool
+                (Query "DELETE FROM Users WHERE id = ? ;")
+                [uid]
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Delete user id: " <> show uid
+            return $ A.String $ T.pack $ "User with id "<> show uid <>" deleted"
         _ -> throwError NotFound
 
 userNewPass ::
@@ -191,30 +191,35 @@ userNewPass ::
 userNewPass param = do
     env <- ask
     let mUserName = getParam "name" param
-    let mPass = getParam "pass" param
-    let mNewPass = getParam "new_pass" param
+    uName <- mUserName & fromMaybeM NotFound
+    when (null uName) (throwError WrongQueryParameter)
 
-    case sequence [mUserName,mPass,mNewPass] of
-        Just [uName,uPass,uNewPass] -> do
-            when (null uNewPass) (throwError WrongQueryParameter)
-            let pool = dbConn env
-            isUser <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-                [uName]
-            unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
-            isPass <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));")
-                (uName,uPass)
-            unless (maybe False fromOnly $ listToMaybe isPass) (throwError WrongPass)
-            _ <- execWithExcept pool
-                (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
-                ( uNewPass
-                , (BS.toString . makeHash . BS.fromString) (uName <> uNewPass)
-                , uName)
-            u <- queryWithExcept pool
-                (Query "SELECT * FROM Users WHERE UserName = ? ;")
-                [uName]
-            liftIO $ Logger.info (Logger.lConfig env) $
-                "Change password for user: " <> uName
-            return $ A.toJSON (u :: [User])
-        _ -> throwError NotFound
+    let mPass = getParam "pass" param
+    uPass <- mPass & fromMaybeM NotFound
+    when (null uPass) (throwError WrongQueryParameter)
+
+    let mNewPass = getParam "new_pass" param
+    uNewPass <- mNewPass & fromMaybeM NotFound
+    when (null uNewPass) (throwError WrongQueryParameter)
+
+    let pool = dbConn env
+    isUser <- queryWithExcept pool
+        (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
+        [uName]
+    unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
+    isPass <- queryWithExcept pool
+        (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));")
+        (uName,uPass)
+    unless (maybe False fromOnly $ listToMaybe isPass) (throwError WrongPass)
+    _ <- execWithExcept pool
+        (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
+        ( uNewPass
+        , (BS.toString . makeHash . BS.fromString) (uName <> uNewPass)
+        , uName)
+    u <- queryWithExcept pool
+        (Query "SELECT * FROM Users WHERE UserName = ? ;")
+        [uName]
+    liftIO $ Logger.info (Logger.lConfig env) $
+        "Change password for user: " <> uName
+    return $ A.toJSON (u :: [User])
+

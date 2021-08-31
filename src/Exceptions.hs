@@ -15,6 +15,7 @@ data Errors
     | ObjectNOTExists -- The object is not exists on db
 -- for Users
     | WrongPass
+    | NoToken
 -- for Authors
     | UserNOTExists
 
@@ -40,6 +41,7 @@ instance Show Errors where
     show ObjectNOTExists          = " The object is not exists on db"
 
     show WrongPass                = "Incorrect password or user is not exists"
+    show NoToken                  = "Token exists in requiest"
 
     show UserNOTExists            = "The User is not exists on db"
 

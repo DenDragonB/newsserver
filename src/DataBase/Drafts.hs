@@ -77,43 +77,42 @@ draftAdd ::
 draftAdd param = do
     env <- ask
     let mtoken = getParam "token" param
-    case mtoken of
-        Just token -> do
-            let pool = dbConn env
-            authors <- queryWithExcept pool
-                (Query "SELECT id FROM Authors WHERE UserId = "
-                    <> "(SELECT Id FROM Users WHERE Token = ? );")
-                [token]
-            case (authors :: [Only Int]) of
-                [author] -> do
-                    let mheader = getParam "header" param
-                    queryHeader <- mheader & fromMaybeM WrongQueryParameter
+    token <- mtoken & fromMaybeM NotFound
 
-                    mcat <- parseParam "category_id" param
-                    cat <- (mcat :: Maybe Int) & fromMaybeM WrongQueryParameter
+    let pool = dbConn env
+    authors <- queryWithExcept pool
+        (Query "SELECT id FROM Authors WHERE UserId = "
+            <> "(SELECT Id FROM Users WHERE Token = ? );")
+        [token]
+    case (authors :: [Only Int]) of
+        [author] -> do
+            let mheader = getParam "header" param
+            queryHeader <- mheader & fromMaybeM WrongQueryParameter
 
-                    mtags <- parseParamList "tags_id" param
-                    let mcont = getParam "content" param
-                    let mmph = getParam "main_photo" param
-                    let mphs = getParamList "photos" param
-                    let tags = fromMaybe [] (mtags :: Maybe [Int])
-                    let cont = fromMaybe "" mcont
-                    let mph = fromMaybe "" mmph
-                    let phs = fromMaybe [] mphs
-                    dids <- queryWithExcept pool
-                        (Query "INSERT INTO Drafts "
-                            <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
-                            <> " VALUES ( ?,NOW(),0,?,?, ?,?,?, ?) RETURNING Id;")
-                        (queryHeader, fromOnly author,
-                            cat,PGArray tags,cont,mph, PGArray phs)
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Draft: " <> queryHeader
-                    draft <- queryWithExcept pool
-                        (Query "SELECT * FROM Drafts WHERE Id = ? ;")
-                        $ fromOnly <$> (dids :: [Only Int])
-                    return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
-                _ -> throwError AuthorNOTExists
-        _ -> throwError NotFound
+            mcat <- parseParam "category_id" param
+            cat <- (mcat :: Maybe Int) & fromMaybeM WrongQueryParameter
+
+            mtags <- parseParamList "tags_id" param
+            let mcont = getParam "content" param
+            let mmph = getParam "main_photo" param
+            let mphs = getParamList "photos" param
+            let tags = fromMaybe [] (mtags :: Maybe [Int])
+            let cont = fromMaybe "" mcont
+            let mph = fromMaybe "" mmph
+            let phs = fromMaybe [] mphs
+            dids <- queryWithExcept pool
+                (Query "INSERT INTO Drafts "
+                    <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
+                    <> " VALUES ( ?,NOW(),0,?,?, ?,?,?, ?) RETURNING Id;")
+                (queryHeader, fromOnly author,
+                    cat,PGArray tags,cont,mph, PGArray phs)
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Add Draft: " <> queryHeader
+            draft <- queryWithExcept pool
+                (Query "SELECT * FROM Drafts WHERE Id = ? ;")
+                $ fromOnly <$> (dids :: [Only Int])
+            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
+        _ -> throwError AuthorNOTExists
 
 draftEdit ::
     ( MonadReader env m

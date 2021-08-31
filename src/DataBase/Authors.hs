@@ -10,6 +10,7 @@ import           Database.PostgreSQL.Simple.Types
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
+import           Data.Function
 import           Data.Maybe                         (listToMaybe)
 import           Data.Text                          (Text, pack)
 import           GHC.Generics
@@ -43,28 +44,29 @@ authorAdd param = do
     case admin of
         Just (_, True ) -> do
             muid <- parseParam "user_id" param
+            uid <- (muid :: Maybe Int) & fromMaybeM WrongQueryParameter
+
             let mabout = getParam "about" param
-            case sequence (muid :: Maybe Int,mabout) of
-                Just (uid,queryAbout) -> do
-                    let pool = dbConn env
-                    isUser <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
-                        [uid]
-                    unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
-                    isAuthor <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
-                        [uid]
-                    when (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectExists)
-                    _ <- execWithExcept pool
-                        (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
-                        (uid , queryAbout )
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add author with user id: " <> show uid
-                    author <- queryWithExcept pool
-                        (Query "SELECT * FROM Authors WHERE UserId = ? ;")
-                        [uid]
-                    return $ A.toJSON (author :: [Author])
-                _ -> throwError WrongQueryParameter
+            queryAbout <- mabout & fromMaybeM WrongQueryParameter
+
+            let pool = dbConn env
+            isUser <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
+                [uid]
+            unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
+            isAuthor <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
+                [uid]
+            when (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectExists)
+            _ <- execWithExcept pool
+                (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
+                (uid , queryAbout )
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Add author with user id: " <> show uid
+            author <- queryWithExcept pool
+                (Query "SELECT * FROM Authors WHERE UserId = ? ;")
+                [uid]
+            return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 
 authorEdit ::
@@ -80,29 +82,29 @@ authorEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
+            maid <- parseParam "id" param
+            aid <- (maid :: Maybe Int) & fromMaybeM WrongQueryParameter
+
             uid <- parseParam "user_id" param
             let queryAbout = getParam "about" param
-            maid <- parseParam "id" param
-            case maid :: Maybe Int of
-                Nothing -> throwError WrongQueryParameter
-                Just aid -> do
-                    let pool = dbConn env
-                    isAuthor <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
-                        [aid]
-                    unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
-                    _ <- execWithExcept pool
-                        (Query "UPDATE Authors SET "
-                            <> "UserId = COALESCE (?,userid),"
-                            <> "About = COALESCE (?,about)"
-                            <> "WHERE Id = ?;")
-                        (uid :: Maybe Int,queryAbout,aid)
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Edit author id: " <> show aid
-                    author <- queryWithExcept pool
-                        (Query "SELECT * FROM Authors WHERE Id = ? ;")
-                        [aid]
-                    return $ A.toJSON (author :: [Author])
+
+            let pool = dbConn env
+            isAuthor <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
+                [aid]
+            unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
+            _ <- execWithExcept pool
+                (Query "UPDATE Authors SET "
+                    <> "UserId = COALESCE (?,userid),"
+                    <> "About = COALESCE (?,about)"
+                    <> "WHERE Id = ?;")
+                (uid :: Maybe Int,queryAbout,aid)
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Edit author id: " <> show aid
+            author <- queryWithExcept pool
+                (Query "SELECT * FROM Authors WHERE Id = ? ;")
+                [aid]
+            return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 
 authorGet ::
@@ -145,18 +147,17 @@ authorDelete param = do
     case admin of
         Just (_, True ) -> do
             maid <- parseParam "id" param
-            case maid :: Maybe Int of
-                Nothing -> throwError WrongQueryParameter
-                Just aid -> do
-                    let pool = dbConn env
-                    isAuthor <- queryWithExcept pool
-                        (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
-                        [aid]
-                    unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
-                    _ <- execWithExcept pool
-                        (Query "DELETE FROM Authors WHERE Id = ? ;")
-                        [aid]
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Delete author id: " <> show aid
-                    return $ A.String $ "Author with id "<> (pack . show) aid <>" deleted"
+            aid <- (maid :: Maybe Int) & fromMaybeM WrongQueryParameter
+
+            let pool = dbConn env
+            isAuthor <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
+                [aid]
+            unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
+            _ <- execWithExcept pool
+                (Query "DELETE FROM Authors WHERE Id = ? ;")
+                [aid]
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Delete author id: " <> show aid
+            return $ A.String $ "Author with id "<> (pack . show) aid <>" deleted"
         _ -> throwError NotFound
