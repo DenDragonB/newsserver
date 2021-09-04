@@ -11,7 +11,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import           Data.Function
-import           Data.Maybe                         (listToMaybe)
+import           Data.Maybe                         (listToMaybe, isJust)
 import           Data.Text                          (Text, pack)
 import           GHC.Generics
 
@@ -89,12 +89,16 @@ authorEdit param = do
                 (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
                 [aid :: Int]
             unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
+            isUser <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Users WHERE Id = ?);")
+                [uid :: Maybe Int]
+            when (isJust uid && not (maybe False fromOnly $ listToMaybe isUser)) (throwError UserNOTExists)
             _ <- execWithExcept pool
                 (Query "UPDATE Authors SET "
                     <> "UserId = COALESCE (?,userid),"
                     <> "About = COALESCE (?,about)"
                     <> "WHERE Id = ?;")
-                (uid :: Maybe Int,queryAbout,aid)
+                (uid,queryAbout,aid)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Edit author id: " <> show aid
             author <- queryWithExcept pool

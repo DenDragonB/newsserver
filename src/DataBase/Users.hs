@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module DataBase.Users where
 
@@ -29,26 +30,24 @@ data User = User
     , last_name  :: String
     , avatar     :: String
     , name       :: String
-    , upass      :: String
+    , upass      :: Maybe String
     , reg_date   :: Day
-    , adm        :: Bool
-    , token      :: String
+    , adm        :: Maybe Bool
+    , token      :: Maybe String
     } deriving (Show,Eq,Generic)
 instance A.ToJSON User
 instance FromRow User
 
-emptyUser :: User
-emptyUser = User
-    { id = 0
-    , first_name = ""
-    , last_name = ""
-    , avatar = ""
-    , name = ""
-    , upass = ""
-    , reg_date = ModifiedJulianDay 1
-    , adm = False
-    , token = ""
-    }
+data UserToGet = UserToGet
+    { id         :: Int
+    , first_name :: String
+    , last_name  :: String
+    , avatar     :: String
+    , name       :: String
+    , reg_date   :: Day
+    } deriving (Show,Eq,Generic)
+instance A.ToJSON UserToGet
+instance FromRow UserToGet
 
 makeHash :: BS.ByteString -> BS.ByteString
 makeHash bs = fromMaybe "" $ hashPassword bs $
@@ -143,7 +142,7 @@ userGet param = do
             let mUserName = getMaybeParam "name" param
             let pool = dbConn env
             u <- queryWithExcept pool
-                (Query $ "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
+                (Query $ "SELECT id,FirstName,LastName,Avatar,UserName,RegDate FROM Users WHERE"
                     <> "(UserName = COALESCE (?,UserName))"
                     <> "AND (FirstName = COALESCE (?,FirstName))"
                     <> "AND (LastName = COALESCE (?,LastName))"
@@ -152,7 +151,7 @@ userGet param = do
                 ( mUserName
                 , mFirstName
                 , mLastName)
-            return $ A.toJSON (u :: [User])
+            return $ A.toJSON (u :: [UserToGet])
 
 userDel ::
     ( MonadReader env m

@@ -149,8 +149,8 @@ parseMaybeParamList name prms = do
             Nothing -> throwError $ Exceptions.ParametrParseError name
             mpar    -> return mpar
             
-fromMaybeM :: (Exception e, Applicative f) => e -> Maybe a -> f a
-fromMaybeM err = maybe (throw err) pure
+fromMaybeM :: (MonadError e m) => e -> Maybe a -> m a
+fromMaybeM err = maybe (throwError err) pure
 
 getParamM :: 
     ( MonadError Exceptions.Errors m) 

@@ -105,9 +105,9 @@ postGet param = do
             <> "AND (n.RegDate < COALESCE (?,n.RegDate+1))"
             <> "AND (n.RegDate > COALESCE (?,n.RegDate-1))"
             <> "AND (strpos(u.UserName,COALESCE(?,u.UserName))>0 )"
-            <> "AND (Tags && COALESCE(?,Tags))"
-            <> "AND (COALESCE (?,Tags) <@ Tags)"
-            <> "AND (Tags && COALESCE (?,Tags))"
+            <> "AND (n.Tags && COALESCE(?,n.Tags))"
+            <> "AND (COALESCE (?,n.Tags) <@ n.Tags)"
+            <> "AND (COALESCE (?,n.Tags) && n.Tags)"
             <> "AND (strpos(n.Header,COALESCE (?,n.Header)) > 0)"
             <> "AND (strpos(n.Content,COALESCE (?,n.Content)) > 0)"
             -- group elements to correct work array_agg(tag)

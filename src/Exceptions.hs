@@ -37,10 +37,10 @@ instance Show Errors where
     show NotFound                 = "404 - Not found"
 
     show PostgreError             = "Error when accessing the database. Contact your administrator."
-    show (WrongQueryParameter par)= "Wrong query parameter" <> par
+    show (WrongQueryParameter par)= "Wrong query parameter " <> par
     show (ParametrParseError par) = "Cannot parse parameter " <> par
     show ObjectExists             = "The object already exists"
-    show ObjectNOTExists          = " The object is not exists on db"
+    show ObjectNOTExists          = "The object is not exists on db"
 
     show WrongPass                = "Incorrect password or user is not exists"
     show NoToken                  = "Token exists in requiest"

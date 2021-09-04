@@ -1,2 +1,10 @@
 #!/bin/sh
-curl "http://localhost:8080/tag.add?token=admin&name=Computer"
+if [ -n "$1" ]
+then
+TOKEN="$1"
+else
+echo -n "Enter ADMIN token: "
+read TOKEN
+fi
+curl "http://localhost:8080/tag.add?token=$TOKEN&name=Computer"
+echo

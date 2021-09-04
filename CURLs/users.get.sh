@@ -1,2 +1,10 @@
 #!/bin/sh
-curl "http://localhost:8080/user.get?last_name=Bychkov&limit=2&page=2"
+if [ -n "$1" ]
+then
+TOKEN="$1"
+else
+echo -n "Enter any token: "
+read TOKEN
+fi
+curl "http://localhost:8080/user.get?token=$TOKEN"
+echo
