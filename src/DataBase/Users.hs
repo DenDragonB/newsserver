@@ -64,23 +64,21 @@ userAdd ::
     -> m A.Value
 userAdd param = do
 
-    let mUserName = getParam "name" param
-    userName <- mUserName & fromMaybeM WrongQueryParameter
-    when (null userName) (throwError WrongQueryParameter)
+    userName <- getParamM "name" param
+    when (null userName) (throwError $ WrongQueryParameter "name")
 
-    let mPass = getParam "pass" param
-    userPass <- mPass & fromMaybeM WrongQueryParameter
-    when (null userPass) (throwError WrongQueryParameter)
+    userPass <- getParamM "pass" param
+    when (null userPass) (throwError $ WrongQueryParameter "pass")
 
-    let mFirstName = getParam "first_name" param
-    let mLastName = getParam "last_name" param
-    let mAvatar = getParam "avatar" param
+    let mFirstName = getMaybeParam "first_name" param
+    let mLastName = getMaybeParam "last_name" param
+    let mAvatar = getMaybeParam "avatar" param
 
     env <- ask
     let pool = dbConn env
     oldUser <- queryWithExcept pool
         (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-        [mUserName]
+        [userName]
     when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
     _ <- execWithExcept pool
         (Query "INSERT INTO Users "
@@ -89,12 +87,12 @@ userAdd param = do
         ( mFirstName
         , mLastName
         , mAvatar
-        , mUserName
-        , mPass
+        , userName
+        , userPass
         , (BS.toString . makeHash . BS.fromString) (userName <> userPass))
     u <- queryWithExcept pool
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-        (mUserName, mFirstName, mLastName)
+        (userName, mFirstName, mLastName)
     liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
     return $ A.toJSON (u :: [User])
 
@@ -109,7 +107,7 @@ findToken ::
     -> m (Maybe (Bool,Bool))
 findToken param = do
     env <- ask
-    let mToken = getParam "token" param
+    let mToken = getMaybeParam "token" param
     case mToken of
         Nothing -> return Nothing
         Just queryToken -> do
@@ -140,9 +138,9 @@ userGet param = do
         then throwError NotFound
         else do
             env <- ask
-            let mFirstName = getParam "first_name" param
-            let mLastName = getParam "last_name" param
-            let mUserName = getParam "name" param
+            let mFirstName = getMaybeParam "first_name" param
+            let mLastName = getMaybeParam "last_name" param
+            let mUserName = getMaybeParam "name" param
             let pool = dbConn env
             u <- queryWithExcept pool
                 (Query $ "SELECT id,UserName,FirstName,LastName,Avatar,RegDate FROM Users,searchData WHERE"
@@ -168,13 +166,12 @@ userDel param = do
     admin <- findToken param
     case admin of
         Just (_,True ) -> do
-            muid <- parseParam "id" param
-            uid <- (muid :: Maybe Int) & fromMaybeM WrongQueryParameter
+            uid <- parseParamM "id" param
             env <- ask
             let pool = dbConn env
             _ <- execWithExcept pool
                 (Query "DELETE FROM Users WHERE id = ? ;")
-                [uid]
+                [uid :: Int]
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Delete user id: " <> show uid
             return $ A.String $ T.pack $ "User with id "<> show uid <>" deleted"
@@ -190,17 +187,17 @@ userNewPass ::
     -> m A.Value
 userNewPass param = do
     env <- ask
-    let mUserName = getParam "name" param
+    let mUserName = getMaybeParam "name" param
     uName <- mUserName & fromMaybeM NotFound
-    when (null uName) (throwError WrongQueryParameter)
+    when (null uName) (throwError $ WrongQueryParameter "name")
 
-    let mPass = getParam "pass" param
+    let mPass = getMaybeParam "pass" param
     uPass <- mPass & fromMaybeM NotFound
-    when (null uPass) (throwError WrongQueryParameter)
+    when (null uPass) (throwError $ WrongQueryParameter "pass")
 
-    let mNewPass = getParam "new_pass" param
+    let mNewPass = getMaybeParam "new_pass" param
     uNewPass <- mNewPass & fromMaybeM NotFound
-    when (null uNewPass) (throwError WrongQueryParameter)
+    when (null uNewPass) (throwError $ WrongQueryParameter "new_pass")
 
     let pool = dbConn env
     isUser <- queryWithExcept pool

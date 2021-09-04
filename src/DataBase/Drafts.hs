@@ -76,7 +76,7 @@ draftAdd ::
     -> m A.Value
 draftAdd param = do
     env <- ask
-    let mtoken = getParam "token" param
+    let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
     let pool = dbConn env
@@ -86,16 +86,13 @@ draftAdd param = do
         [token]
     case (authors :: [Only Int]) of
         [author] -> do
-            let mheader = getParam "header" param
-            queryHeader <- mheader & fromMaybeM WrongQueryParameter
+            queryHeader <- getParamM "header" param
+            cat <- parseParamM "category_id" param
 
-            mcat <- parseParam "category_id" param
-            cat <- (mcat :: Maybe Int) & fromMaybeM WrongQueryParameter
-
-            mtags <- parseParamList "tags_id" param
-            let mcont = getParam "content" param
-            let mmph = getParam "main_photo" param
-            let mphs = getParamList "photos" param
+            mtags <- parseMaybeParamList "tags_id" param
+            let mcont = getMaybeParam "content" param
+            let mmph = getMaybeParam "main_photo" param
+            let mphs = getMaybeParamList "photos" param
             let tags = fromMaybe [] (mtags :: Maybe [Int])
             let cont = fromMaybe "" mcont
             let mph = fromMaybe "" mmph
@@ -105,7 +102,7 @@ draftAdd param = do
                     <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
                     <> " VALUES ( ?,NOW(),0,?,?, ?,?,?, ?) RETURNING Id;")
                 (queryHeader, fromOnly author,
-                    cat,PGArray tags,cont,mph, PGArray phs)
+                    cat :: Int,PGArray tags,cont,mph, PGArray phs)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Add Draft: " <> queryHeader
             draft <- queryWithExcept pool
@@ -125,11 +122,8 @@ draftEdit ::
 draftEdit param = do
     env <- ask
 
-    let mtoken = getParam "token" param
+    let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
-
-    mdid <- parseParam "id" param
-    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool
@@ -138,17 +132,19 @@ draftEdit param = do
         [token]
     when (null authors) (throwError AuthorNOTExists)
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+
+    did <- parseParamM "id" param
     isDraft <- queryWithExcept pool
         (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
-        (did,author)
+        (did :: Int,author)
     unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
 
-    let queryHeader = getParam "header" param
-    cat <- parseParam "category_id" param
-    tags <- parseParamList "tags_id" param
-    let cont = getParam "content" param
-    let mph = getParam "main_photo" param
-    let phs = getParamList "photos" param
+    let queryHeader = getMaybeParam "header" param
+    cat <- parseMaybeParam "category_id" param
+    tags <- parseMaybeParamList "tags_id" param
+    let cont = getMaybeParam "content" param
+    let mph = getMaybeParam "main_photo" param
+    let phs = getMaybeParamList "photos" param
 
     _ <- execWithExcept pool
         (Query "UPDATE Drafts SET "
@@ -184,11 +180,8 @@ draftGet ::
 draftGet param = do
     env <- ask
 
-    let mtoken = getParam "token" param
+    let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
-
-    mdid <- parseParam "id" param
-    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool
@@ -196,13 +189,14 @@ draftGet param = do
             <> "(SELECT Id FROM Users WHERE Token = ?);")
         [token]
     when (null authors) (throwError AuthorNOTExists)
-
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+
+    did <- parseParamM "id" param
     draft <- queryWithExcept pool
         (Query $ "SELECT * FROM Drafts WHERE Id = ? AND Author = ? "
             <> "ORDER BY RegDate "
             <> getLimitOffsetBS param <> ";")
-        (did,author)
+        (did :: Int,author)
     when (null draft) (throwError ObjectNOTExists)
     return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
 
@@ -217,11 +211,8 @@ draftDelete ::
 draftDelete param = do
     env <- ask
 
-    let mtoken = getParam "token" param
+    let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
-
-    mdid <- parseParam "id" param
-    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool
@@ -230,9 +221,10 @@ draftDelete param = do
         [token]
     when (null authors) (throwError AuthorNOTExists)
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    did <- parseParamM "id" param
     isDraft <- queryWithExcept pool
         (Query "SELECT EXISTS (SELECT Id FROM Drafts WHERE Id = ? AND Author = ? );")
-        (did,author)
+        (did :: Int,author)
     unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
     _ <- liftIO $ execDBsafe pool
         (Query "DELETE FROM Drafts WHERE Id = ? AND Author = ? ;")
@@ -252,11 +244,8 @@ draftPublish ::
 draftPublish param = do
     env <- ask
 
-    let mtoken = getParam "token" param
+    let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
-
-    mdid <- parseParam "id" param
-    did <- (mdid :: Maybe Int) & fromMaybeM NotFound
 
     let pool = dbConn env
     authors <- queryWithExcept pool
@@ -265,9 +254,10 @@ draftPublish param = do
         [token]
     when (null authors) (throwError AuthorNOTExists)
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    did <- parseParamM "id" param
     drafts <- queryWithExcept pool
         (Query "SELECT * FROM Drafts WHERE Id = ? AND Author = ? ;")
-        (did,author)
+        (did :: Int,author)
     when (null drafts) (throwError ObjectNOTExists)
 
     let draft = fromMaybe emptyDraft $ listToMaybe (drafts :: [Draft])

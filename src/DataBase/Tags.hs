@@ -40,8 +40,7 @@ tagAdd param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let mname = getParam "name" param
-            tagname <- mname & fromMaybeM WrongQueryParameter
+            tagname <- getParamM "name" param
 
             let pool = dbConn env
             isTag <- queryWithExcept pool
@@ -72,11 +71,11 @@ tagEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            tid <- parseParam "id" param
-            when (isNothing tid) $ throwError WrongQueryParameter
+            tid <- parseMaybeParam "id" param
+            when (isNothing tid) $ throwError $ WrongQueryParameter "id"
 
-            let tname = getParam "name" param
-            when (isNothing tname) $ throwError WrongQueryParameter
+            let tname = getMaybeParam "name" param
+            when (isNothing tname) $ throwError $ WrongQueryParameter "name"
 
             let pool = dbConn env
             isTag <- queryWithExcept pool
@@ -112,8 +111,8 @@ tagGet param = do
     case admin of
         Just (True , _ ) -> do
             let pool = dbConn env
-            tid <- parseParam "id" param
-            let tname = getParam "name" param
+            tid <- parseMaybeParam "id" param
+            let tname = getMaybeParam "name" param
             tag <- queryWithExcept pool
                 (Query $ "SELECT id,tag FROM Tags WHERE"
                     <> "(id = COALESCE (?, id))"
@@ -137,13 +136,12 @@ tagDelete param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            mtid <- parseParam "id" param
-            tid <- (mtid :: Maybe Int) & fromMaybeM WrongQueryParameter
+            tid <- parseParamM "id" param
 
             let pool = dbConn env
             isTag <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Id = ? );")
-                [tid]
+                [tid :: Int]
             unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
             _ <- execWithExcept pool
                 (Query "DELETE FROM Tags WHERE Id = ? ;")

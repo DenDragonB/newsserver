@@ -43,16 +43,13 @@ authorAdd param = do
         "Just (User,Admin): " <> show admin
     case admin of
         Just (_, True ) -> do
-            muid <- parseParam "user_id" param
-            uid <- (muid :: Maybe Int) & fromMaybeM WrongQueryParameter
-
-            let mabout = getParam "about" param
-            queryAbout <- mabout & fromMaybeM WrongQueryParameter
+            uid <- parseParamM "user_id" param
+            queryAbout <- getParamM "about" param
 
             let pool = dbConn env
             isUser <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
-                [uid]
+                [uid :: Int]
             unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
             isAuthor <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
@@ -82,16 +79,15 @@ authorEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            maid <- parseParam "id" param
-            aid <- (maid :: Maybe Int) & fromMaybeM WrongQueryParameter
+            aid <- parseParamM "id" param
 
-            uid <- parseParam "user_id" param
-            let queryAbout = getParam "about" param
+            uid <- parseMaybeParam "user_id" param
+            let queryAbout = getMaybeParam "about" param
 
             let pool = dbConn env
             isAuthor <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
-                [aid]
+                [aid :: Int]
             unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
             _ <- execWithExcept pool
                 (Query "UPDATE Authors SET "
@@ -121,8 +117,8 @@ authorGet param = do
     case admin of
         Just (_, True ) -> do
             let pool = dbConn env
-            uid <- parseParam "user_id" param
-            aid <- parseParam "id" param
+            uid <- parseMaybeParam "user_id" param
+            aid <- parseMaybeParam "id" param
             author <- queryWithExcept pool
                 (Query $ "SELECT id,userid,about FROM authors WHERE"
                     <> "(id = COALESCE (?, id))"
@@ -146,13 +142,12 @@ authorDelete param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            maid <- parseParam "id" param
-            aid <- (maid :: Maybe Int) & fromMaybeM WrongQueryParameter
+            aid <- parseParamM "id" param
 
             let pool = dbConn env
             isAuthor <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
-                [aid]
+                [aid :: Int]
             unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
             _ <- execWithExcept pool
                 (Query "DELETE FROM Authors WHERE Id = ? ;")

@@ -14,6 +14,7 @@ import           Control.Monad.Reader
 import qualified Data.ByteString.UTF8       as BS
 import           Text.Read                  (readMaybe)
 
+import           Data.Function
 import           Data.Int
 import           Data.Maybe
 import           Data.Pool
@@ -21,6 +22,7 @@ import           Database.PostgreSQL.Simple
 
 import qualified Exceptions
 import qualified Logger
+import GHC.Exception (Exception)
 
 data Config = Config
     { host   :: String
@@ -63,48 +65,6 @@ instance MyDatabase IO where
     queryDBsafe pool qstring qdata = withResource pool $ \conn -> query conn qstring qdata
     execDBsafe pool qstring qdata = withResource pool $ \conn -> execute conn qstring qdata
 
-getLimitOffsetBS :: [( String , Maybe String )] -> BS.ByteString
-getLimitOffsetBS param = limit <> offset
-    where
-        l = maybe (0 :: Int) read (getParam "limit" param)
-        p = maybe (0 :: Int) read (getParam "page" param)
-        limit = if l <= 0 then (""  :: BS.ByteString)
-            else BS.fromString $ " LIMIT "  <> show l
-        offset = if p <= 0 then ("" :: BS.ByteString)
-            else BS.fromString $ " OFFSET " <> show (l*(p-1))
-
-getParam :: String -> [( String , Maybe String )] -> Maybe String
-getParam name = foldr (func name) Nothing
-    where
-        func nm (pn,pe) ini = if pn /= nm
-            then ini
-            else pe
-
-getParamList :: String -> [( String , Maybe String )] -> Maybe [String]
-getParamList name ps = splitCommas . delBracketStart . delBracketEnd <$> getParam name ps
-
-parseParam ::
-    ( MonadError Exceptions.Errors m
-    , Read a)
-    => String -> [( String , Maybe String )] -> m (Maybe a)
-parseParam name prms = do
-    case getParam name prms of
-        Nothing -> return Nothing
-        Just bspar -> case readMaybe bspar of
-            Nothing -> throwError (Exceptions.ParametrParseError name)
-            mpar    -> return mpar
-
-parseParamList ::
-    ( MonadError Exceptions.Errors m
-    , Read a)
-    => String -> [( String , Maybe String )] -> m (Maybe [a])
-parseParamList name prms = do
-    case getParamList name prms of
-        Nothing -> return Nothing
-        Just bspar -> case mapM readMaybe bspar of
-            Nothing -> throwError (Exceptions.ParametrParseError name)
-            mpar -> return mpar
-
 queryWithExcept ::
     ( MonadReader env m
     , HasDataBase env
@@ -120,11 +80,11 @@ queryWithExcept pool querystring q = do
         Left err -> case fromException err of
             Nothing -> do
                 liftIO . Logger.info (Logger.lConfig env) $ show err
-                throwError Exceptions.WrongQueryParameter
+                throwError Exceptions.PostgreError
             Just (SqlError _ _ msg _ _) -> do
                 liftIO . Logger.info (Logger.lConfig env)
                     $ BS.toString msg
-                throwError Exceptions.WrongQueryParameter
+                throwError Exceptions.PostgreError
 
 execWithExcept ::
     ( MonadReader env m
@@ -141,11 +101,71 @@ execWithExcept pool querystring q = do
         Left err -> case fromException err of
             Nothing -> do
                 liftIO . Logger.info (Logger.lConfig env) $ show err
-                throwError Exceptions.WrongQueryParameter
+                throwError Exceptions.PostgreError
             Just (SqlError _ _ msg _ _) -> do
                 liftIO . Logger.info (Logger.lConfig env)
                     $ BS.toString msg
-                throwError Exceptions.WrongQueryParameter
+                throwError Exceptions.PostgreError
+
+getLimitOffsetBS :: [( String , Maybe String )] -> BS.ByteString
+getLimitOffsetBS param = limit <> offset
+    where
+        l = maybe (0 :: Int) read (getMaybeParam "limit" param)
+        p = maybe (0 :: Int) read (getMaybeParam "page" param)
+        limit = if l <= 0 then (""  :: BS.ByteString)
+            else BS.fromString $ " LIMIT "  <> show l
+        offset = if p <= 0 then ("" :: BS.ByteString)
+            else BS.fromString $ " OFFSET " <> show (l*(p-1))
+
+getMaybeParam :: String -> [( String , Maybe String )] -> Maybe String
+getMaybeParam name = foldr (func name) Nothing
+    where
+        func nm (pn,pe) ini = if pn /= nm
+            then ini
+            else pe
+
+getMaybeParamList :: String -> [( String , Maybe String )] -> Maybe [String]
+getMaybeParamList name ps = splitCommas . delBracketStart . delBracketEnd <$> getMaybeParam name ps
+
+parseMaybeParam ::
+    ( MonadError Exceptions.Errors m
+    , Read a)
+    => String -> [( String , Maybe String )] -> m (Maybe a)
+parseMaybeParam name prms = do
+    case getMaybeParam name prms of
+        Nothing -> return Nothing
+        Just bspar -> case readMaybe bspar of
+            Nothing -> throwError $ Exceptions.ParametrParseError name
+            mpar    -> return mpar
+
+parseMaybeParamList ::
+    ( MonadError Exceptions.Errors m
+    , Read a)
+    => String -> [( String , Maybe String )] -> m (Maybe [a])
+parseMaybeParamList name prms = do
+    case getMaybeParamList name prms of
+        Nothing -> return Nothing
+        Just bspar -> case mapM readMaybe bspar of
+            Nothing -> throwError $ Exceptions.ParametrParseError name
+            mpar    -> return mpar
+            
+fromMaybeM :: (Exception e, Applicative f) => e -> Maybe a -> f a
+fromMaybeM err = maybe (throw err) pure
+
+getParamM :: 
+    ( MonadError Exceptions.Errors m) 
+    => String -> [( String , Maybe String )] -> m String
+getParamM name ps = fromMaybeM (Exceptions.WrongQueryParameter name) $ getMaybeParam name ps
+
+parseParamM ::
+    ( MonadError Exceptions.Errors m
+    , Read a)
+    => String -> [( String , Maybe String )] -> m a
+parseParamM name prms = do
+    bspar <- getParamM name prms
+    case readMaybe bspar of
+        Nothing -> throwError $ Exceptions.ParametrParseError name
+        Just par -> return par
 
 delBracketStart :: String -> String
 delBracketStart xs = if isBracket x then tail xs else xs where
@@ -162,6 +182,3 @@ isBracket mc = case mc of
 
 splitCommas :: String -> [String]
 splitCommas s = words $ map (\c -> if c == ',' then ' ' else c) s
-
-fromMaybeM :: (Exception e, Applicative f) => e -> Maybe a -> f a
-fromMaybeM err = maybe (throw err) pure

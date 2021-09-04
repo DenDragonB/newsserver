@@ -73,21 +73,21 @@ postGet ::
     -> m A.Value
 postGet param = do
     env <- ask
-    let mtoken = getParam "token" param
-    token <- mtoken & fromMaybeM NotFound
+    -- let mtoken = getParam "token" param
+    -- token <- mtoken & fromMaybeM NotFound
 
     let pool = dbConn env
-    let nsort = fromMaybe "" $ getParam "sort_by" param
-    nid <- parseParam "id" param
-    ndate <- parseParam "created_at" param
-    ndateLT <- parseParam "created_at__lt" param
-    ndateGT <- parseParam "created_at__gt" param
-    let nauthor = getParam "author" param
-    ntag <- parseParamList "tag" param
-    ntagAll <- parseParamList "tags__all" param
-    ntagIn <- parseParamList "tags__in" param
-    let nheader = getParam "header" param
-    let ncont = getParam "content" param
+    let nsort = fromMaybe "" $ getMaybeParam "sort_by" param
+    nid <- parseMaybeParam "id" param
+    ndate <- parseMaybeParam "created_at" param
+    ndateLT <- parseMaybeParam "created_at__lt" param
+    ndateGT <- parseMaybeParam "created_at__gt" param
+    let nauthor = getMaybeParam "author" param
+    ntag <- parseMaybeParamList "tag" param
+    ntagAll <- parseMaybeParamList "tags__all" param
+    ntagIn <- parseMaybeParamList "tags__in" param
+    let nheader = getMaybeParam "header" param
+    let ncont = getMaybeParam "content" param
     news <- queryWithExcept pool
         (Query $ "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
             <> "n.Content, n.MainPhoto, n.Photos  FROM News n"

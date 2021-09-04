@@ -42,10 +42,9 @@ categoryAdd param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            let mname = getParam "name" param
-            catName <- mname & fromMaybeM WrongQueryParameter
+            catName <- getParamM "name" param
 
-            mpar <-  parseParam "parent_id" param
+            mpar <-  parseMaybeParam "parent_id" param
             let par = fromMaybe 0 (mpar :: Maybe Int)
 
             let pool = dbConn env
@@ -83,16 +82,15 @@ categoryEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            mcid <- parseParam "id" param
-            cid <- (mcid :: Maybe Int) & fromMaybeM WrongQueryParameter
+            cid <- parseParamM "id" param
 
-            let cname = getParam "name" param
-            par <- parseParam "parent_id" param
+            let cname = getMaybeParam "name" param
+            par <- parseMaybeParam "parent_id" param
 
             let pool = dbConn env
             isCat <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-                [cid]
+                [cid :: Int]
             isCatName <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
                 [cname]
@@ -131,9 +129,9 @@ categoryGet param = do
     case admin of
         Just (True , _ ) -> do
             let pool = dbConn env
-            cid <- parseParam "id" param
-            let cname = getParam "name" param
-            cpar <- parseParam "parent_id" param
+            cid <- parseMaybeParam "id" param
+            let cname = getMaybeParam "name" param
+            cpar <- parseMaybeParam "parent_id" param
             cat <- queryWithExcept pool
                 (Query $ "SELECT id,CatName,Parent FROM Categories WHERE"
                     <> "(id = COALESCE (?, id))"
@@ -158,13 +156,12 @@ categoryDelete param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            mcid <- parseParam "id" param
-            cid <- (mcid :: Maybe Int) & fromMaybeM WrongQueryParameter
+            cid <- parseParamM "id" param
 
             let pool = dbConn env
             isCat <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-                [cid]
+                [cid :: Int]
             isHaveSub <- queryWithExcept pool
                 (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Parent = ?);")
                 [cid]
