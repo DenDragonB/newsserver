@@ -62,7 +62,7 @@ authorAdd param = do
             author <- queryWithExcept pool
                 (Query "SELECT * FROM Authors WHERE UserId = ? ;")
                 [uid]
-            return $ A.toJSON (author :: [Author])
+            return $ A.toJSON $ listToMaybe (author :: [Author])
         _ -> throwError NotFound
 
 authorEdit ::
