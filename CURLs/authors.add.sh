@@ -6,5 +6,5 @@ else
 echo -n "Enter ADMIN token: "
 read TOKEN
 fi
-curl "http://localhost:8080/author.add?token=$TOKEN&user_id=19&about=Thisisbestauthor"
+curl "http://localhost:8080/author.add?token=$TOKEN&user_id=1&about=Thisisbestauthor"
 echo

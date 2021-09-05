@@ -39,4 +39,4 @@ versionDB pool = do
         [v] <- queryDB pool
             "SELECT MAX (FileNumber) FROM MigrationHistory" :: IO [Only String]
         putStrLn $ fromOnly v
-        return $ ( Just . fromOnly) v) else return $ Just "0000"
+        return $ ( Just . fromOnly) v) else return $ Just "000"

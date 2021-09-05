@@ -14,7 +14,6 @@ import           Control.Monad.Reader
 import qualified Data.ByteString.UTF8       as BS
 import           Text.Read                  (readMaybe)
 
-import           Data.Function
 import           Data.Int
 import           Data.Maybe
 import           Data.Pool
@@ -22,7 +21,6 @@ import           Database.PostgreSQL.Simple
 
 import qualified Exceptions
 import qualified Logger
-import GHC.Exception (Exception)
 
 data Config = Config
     { host   :: String
