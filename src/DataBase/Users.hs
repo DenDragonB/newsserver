@@ -93,7 +93,7 @@ userAdd param = do
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
         (userName, mFirstName, mLastName)
     liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
-    return $ A.toJSON (u :: [User])
+    return $ A.toJSON $ listToMaybe (u :: [User])
 
 
 findToken ::
@@ -217,5 +217,5 @@ userNewPass param = do
         [uName]
     liftIO $ Logger.info (Logger.lConfig env) $
         "Change password for user: " <> uName
-    return $ A.toJSON (u :: [User])
+    return $ A.toJSON $ listToMaybe (u :: [User])
 

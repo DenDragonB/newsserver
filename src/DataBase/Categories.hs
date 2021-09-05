@@ -65,7 +65,7 @@ categoryAdd param = do
             cat <- queryWithExcept pool
                 (Query "SELECT * FROM Categories WHERE CatName = ? ;")
                 [catName]
-            return $ A.toJSON (cat :: [Category])
+            return $ A.toJSON $ listToMaybe (cat :: [Category])
         _ -> throwError NotFound
 
 categoryEdit ::
@@ -111,7 +111,7 @@ categoryEdit param = do
             cat <- queryWithExcept pool
                 (Query "SELECT * FROM Categories WHERE Id = ?;")
                 [cid]
-            return $ A.toJSON (cat :: [Category])
+            return $ A.toJSON $ listToMaybe (cat :: [Category])
         _ -> throwError NotFound
 
 categoryGet ::

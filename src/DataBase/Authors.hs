@@ -38,8 +38,6 @@ authorAdd ::
 authorAdd param = do
     env <- ask
     admin <- findToken param
-    liftIO $ Logger.debug (Logger.lConfig env) $
-        "Just (User,Admin): " <> show admin
     case admin of
         Just (_, True ) -> do
             uid <- parseParamM "user_id" param
@@ -103,7 +101,7 @@ authorEdit param = do
             author <- queryWithExcept pool
                 (Query "SELECT * FROM Authors WHERE Id = ? ;")
                 [aid]
-            return $ A.toJSON (author :: [Author])
+            return $ A.toJSON $ listToMaybe (author :: [Author])
         _ -> throwError NotFound
 
 authorGet ::

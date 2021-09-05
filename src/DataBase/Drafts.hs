@@ -108,7 +108,7 @@ draftAdd param = do
             draft <- queryWithExcept pool
                 (Query "SELECT * FROM Drafts WHERE Id = ? ;")
                 $ fromOnly <$> (dids :: [Only Int])
-            return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
+            return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
         _ -> throwError AuthorNOTExists
 
 draftEdit ::
@@ -167,7 +167,7 @@ draftEdit param = do
     draft <- queryWithExcept pool
         (Query "SELECT * FROM Drafts WHERE Id = ? ;")
         [did]
-    return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
+    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
 
 draftGet ::
     ( MonadReader env m
@@ -198,7 +198,7 @@ draftGet param = do
             <> getLimitOffsetBS param <> ";")
         (did :: Int,author)
     when (null draft) (throwError ObjectNOTExists)
-    return $ A.toJSON $ draftToJSON <$> (draft :: [Draft])
+    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
 
 draftDelete ::
     ( MonadReader env m

@@ -54,7 +54,7 @@ tagAdd param = do
             tag <- queryWithExcept pool
                 (Query "SELECT * FROM Tags WHERE Tag = ? ;")
                 [tagname]
-            return $ A.toJSON (tag :: [Tag])
+            return $ A.toJSON $ listToMaybe (tag :: [Tag])
         _ -> throwError NotFound
 
 tagEdit ::
@@ -93,7 +93,7 @@ tagEdit param = do
             tag <- queryWithExcept pool
                 (Query "SELECT * FROM Tags WHERE Id = ? ;")
                 [tid]
-            return $ A.toJSON (tag :: [Tag])
+            return $ A.toJSON $ listToMaybe (tag :: [Tag])
         _ -> throwError NotFound
 
 tagGet ::
