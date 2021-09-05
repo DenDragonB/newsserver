@@ -63,7 +63,6 @@ start env = do
 
 app :: Environment -> Application
 app env request respond = do
-    Logger.debug (Logger.lConfig env) $ "Request received: " <> show request
     resp <- runAnswear env request
     respond $ case resp of
         Right js         -> sendText js
@@ -74,7 +73,7 @@ sendError :: Errors -> Response
 sendError err = responseLBS
     (errorCode err)
     [("Content-Type", "text/plain")]
-    $ BSLazy.fromString $ show err
+    $ A.encodingToLazyByteString $ A.pairs ("result" A..= ("Failure" :: String) <> "error" A..= show err)
 
 sendText :: A.Value -> Response
 sendText js = responseLBS

@@ -1,6 +1,6 @@
 INSERT INTO
 MigrationHistory ( MajorVersion, MinorVersion, FileNumber, Comment,    DateApplied )
-VALUES           ( '01',         '01',         '0003',     '0003',     NOW() );
+VALUES           ( '01',         '01',         '0004',     '0004',     NOW() );
 
 INSERT INTO
 Users  ( UserName, Pass,   Adm,  Token,   RegDate)

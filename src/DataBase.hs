@@ -77,10 +77,10 @@ queryWithExcept pool querystring q = do
         Right out -> return out
         Left err -> case fromException err of
             Nothing -> do
-                liftIO . Logger.info (Logger.lConfig env) $ show err
+                liftIO . Logger.error (Logger.lConfig env) $ show err
                 throwError Exceptions.PostgreError
             Just (SqlError _ _ msg _ _) -> do
-                liftIO . Logger.info (Logger.lConfig env)
+                liftIO . Logger.error (Logger.lConfig env)
                     $ BS.toString msg
                 throwError Exceptions.PostgreError
 
@@ -98,10 +98,10 @@ execWithExcept pool querystring q = do
         Right out -> return out
         Left err -> case fromException err of
             Nothing -> do
-                liftIO . Logger.info (Logger.lConfig env) $ show err
+                liftIO . Logger.error (Logger.lConfig env) $ show err
                 throwError Exceptions.PostgreError
             Just (SqlError _ _ msg _ _) -> do
-                liftIO . Logger.info (Logger.lConfig env)
+                liftIO . Logger.error (Logger.lConfig env)
                     $ BS.toString msg
                 throwError Exceptions.PostgreError
 
