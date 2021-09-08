@@ -84,6 +84,9 @@ tags__in - optional. find posts that have at least one tag from the list
 /posts.get?tags__in=[123,124,125]
 /posts.get?tags__all=[123,124,125]
 
+search - optional. search for a string that can be found in text content, header,
+    tag name, category name or author name. case-insensitive.
+
 sort_by - optional. sorting posts. possible values:
     author - sort by author name
     date - sort ba date

@@ -7,7 +7,6 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                   as A
 import qualified Data.Aeson.Encoding.Internal as A
-import qualified Data.ByteString.Lazy.UTF8    as BSLazy
 import qualified Data.ByteString.UTF8         as BS
 
 import           GHC.Generics

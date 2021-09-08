@@ -88,6 +88,7 @@ postGet param = do
     ntagIn <- parseMaybeParamList "tags__in" param
     let nheader = getMaybeParam "header" param
     let ncont = getMaybeParam "content" param
+    let nsearch = getMaybeParam "search" param
     news <- queryWithExcept pool
         (Query $ "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
             <> "n.Content, n.MainPhoto, n.Photos  FROM News n"
@@ -110,6 +111,9 @@ postGet param = do
             <> "AND (COALESCE (?,n.Tags) && n.Tags)"
             <> "AND (strpos(n.Header,COALESCE (?,n.Header)) > 0)"
             <> "AND (strpos(n.Content,COALESCE (?,n.Content)) > 0)"
+            -- Add search
+            <> "AND (strpos (lower(n.Content || n.Header || u.UserName || t.tag  || c.CatName),"
+            <> " lower(COALESCE (?,n.Content || n.Header || u.UserName || t.tag  || c.CatName))) > 0)"
             -- group elements to correct work array_agg(tag)
             <> "GROUP BY n.Id, n.Header, n.RegDate, u.UserName, c.CatName, "
             <> "n.Content, n.MainPhoto, n.Photos "
@@ -127,7 +131,8 @@ postGet param = do
         , PGArray <$> (ntagAll :: Maybe [Int])
         , PGArray <$> (ntagIn :: Maybe [Int])
         , nheader
-        , ncont )
+        , ncont
+        , nsearch)
     return $ A.toJSON (newsToJSON <$> news)
 
 addSortBy :: String -> BS.ByteString
