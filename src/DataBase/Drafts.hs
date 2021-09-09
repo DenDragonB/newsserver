@@ -90,10 +90,18 @@ draftAdd param = do
             cat <- parseParamM "category_id" param
 
             mtags <- parseMaybeParamList "tags_id" param
+            let tags = fromMaybe [] (mtags :: Maybe [Int])
+            bdtags <- queryWithExcept pool
+                (Query "SELECT id FROM Tags WHERE"
+                    <> "(array_position (?,id) IS NOT NULL)")
+                [PGArray tags]
+            unless (length tags==length (bdtags :: [Only Int])) 
+                (throwError (WrongQueryParameter "tags_id"))
+                
             let mcont = getMaybeParam "content" param
             let mmph = getMaybeParam "main_photo" param
             let mphs = getMaybeParamList "photos" param
-            let tags = fromMaybe [] (mtags :: Maybe [Int])
+            
             let cont = fromMaybe "" mcont
             let mph = fromMaybe "" mmph
             let phs = fromMaybe [] mphs
@@ -103,11 +111,27 @@ draftAdd param = do
                     <> " VALUES ( ?,NOW(),0,?,?, ?,?,?, ?) RETURNING Id;")
                 (queryHeader, fromOnly author,
                     cat :: Int,PGArray tags,cont,mph, PGArray phs)
-            liftIO $ Logger.info (Logger.lConfig env) $
-                "Add Draft: " <> queryHeader
+            let newid = listToMaybe $ fromOnly <$> (dids :: [Only Int])
+            if null tags 
+                then do
+                    _ <- execWithExcept pool
+                        (Query "Delete from draftstotags where draftid=?;")
+                        [newid]
+                    liftIO $ Logger.info (Logger.lConfig env) $
+                        "Add Draft: " <> queryHeader                
+                else do
+                    _ <- execWithExcept pool
+                        (Query "Delete from draftstotags where draftid=?;"
+                        <> "Insert into draftstotags (draftid,tagid) "
+                        <> "(SELECT ?,UNNEST (?)) ON CONFLICT DO NOTHING;")
+                        ( newid
+                        , newid
+                        , PGArray tags)
+                    liftIO $ Logger.info (Logger.lConfig env) $
+                        "Add Draft: " <> queryHeader 
             draft <- queryWithExcept pool
                 (Query "SELECT * FROM Drafts WHERE Id = ? ;")
-                $ fromOnly <$> (dids :: [Only Int])
+                $ fromOnly <$> dids
             return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
         _ -> throwError AuthorNOTExists
 
@@ -141,7 +165,15 @@ draftEdit param = do
 
     let queryHeader = getMaybeParam "header" param
     cat <- parseMaybeParam "category_id" param
-    tags <- parseMaybeParamList "tags_id" param
+
+    mtags <- parseMaybeParamList "tags_id" param
+    let tags = fromMaybe [] (mtags :: Maybe [Int])
+    bdtags <- queryWithExcept pool
+        (Query "SELECT id FROM Tags WHERE"
+            <> "(array_position (?,id) IS NOT NULL)")
+        [PGArray tags]
+    unless (length tags==length (bdtags :: [Only Int])) 
+                (throwError (WrongQueryParameter "tags_id"))
     let cont = getMaybeParam "content" param
     let mph = getMaybeParam "main_photo" param
     let phs = getMaybeParamList "photos" param
@@ -154,16 +186,34 @@ draftEdit param = do
             <> "Content = COALESCE (?, Content ),"
             <> "MainPhoto = COALESCE (?, MainPhoto ),"
             <> "Photos = COALESCE (?, Photos )"
-            <> "WHERE Id = ?;")
+            <> "WHERE Id = ? ;")
         ( queryHeader
         , cat :: Maybe Int
-        , PGArray <$> (tags :: Maybe [Int])
+        , PGArray <$> (mtags :: Maybe [Int])
         , cont
         , mph
         , PGArray <$> phs
         , did)
-    liftIO $ Logger.info (Logger.lConfig env) $
-        "Edit Draft id: " <> show did
+    case mtags of
+        Nothing -> do
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Edit Draft id: " <> show did
+        Just [] -> do
+            _ <- execWithExcept pool
+                (Query "Delete from draftstotags where draftid=?;")
+                [ did ]
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Edit Draft id: " <> show did
+        _ -> do
+            _ <- execWithExcept pool
+                (Query "Delete from draftstotags where draftid=?;"
+                    <> "Insert into draftstotags (draftid,tagid) "
+                    <> "(SELECT ?,UNNEST (?)) ON CONFLICT DO NOTHING;")
+                ( did
+                , did
+                , PGArray tags)
+            liftIO $ Logger.info (Logger.lConfig env) $
+                "Edit Draft id: " <> show did                
     draft <- queryWithExcept pool
         (Query "SELECT * FROM Drafts WHERE Id = ? ;")
         [did]
