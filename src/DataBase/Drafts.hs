@@ -175,7 +175,7 @@ draftEdit param = do
     isCat <- queryWithExcept pool
         (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
         [cat :: Maybe Int]
-    unless (isNothing cat && maybe False fromOnly (listToMaybe isCat))
+    unless (isNothing cat || maybe False fromOnly (listToMaybe isCat))
         (throwError $ WrongQueryParameter "category_id")
 
     mtags <- parseMaybeParamList "tags_id" param
