@@ -14,7 +14,7 @@ import           GHC.Generics                       (Generic)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import           Data.Maybe                         (fromMaybe, listToMaybe)
+import           Data.Maybe                         (fromMaybe, listToMaybe, isNothing)
 import           Data.Text                          (Text, pack)
 import           Data.Time
 
@@ -87,7 +87,13 @@ draftAdd param = do
     case (authors :: [Only Int]) of
         [author] -> do
             queryHeader <- getParamM "header" param
+            
             cat <- parseParamM "category_id" param
+            isCat <- queryWithExcept pool
+                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
+                [cat :: Int]
+            unless (maybe False fromOnly $ listToMaybe isCat) 
+                (throwError $ WrongQueryParameter "category_id")
 
             mtags <- parseMaybeParamList "tags_id" param
             let tags = fromMaybe [] (mtags :: Maybe [Int])
@@ -110,7 +116,7 @@ draftAdd param = do
                     <> "(Header,RegDate,News,Author,Category,Tags,Content,MainPhoto,Photos)"
                     <> " VALUES ( ?,NOW(),0,?,?, ?,?,?, ?) RETURNING Id;")
                 (queryHeader, fromOnly author,
-                    cat :: Int,PGArray tags,cont,mph, PGArray phs)
+                    cat,PGArray tags,cont,mph, PGArray phs)
             let newid = listToMaybe $ fromOnly <$> (dids :: [Only Int])
             if null tags 
                 then do
@@ -164,7 +170,13 @@ draftEdit param = do
     unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
 
     let queryHeader = getMaybeParam "header" param
+    
     cat <- parseMaybeParam "category_id" param
+    isCat <- queryWithExcept pool
+        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
+        [cat :: Maybe Int]
+    unless (isNothing cat && maybe False fromOnly (listToMaybe isCat))
+        (throwError $ WrongQueryParameter "category_id")
 
     mtags <- parseMaybeParamList "tags_id" param
     let tags = fromMaybe [] (mtags :: Maybe [Int])
@@ -188,7 +200,7 @@ draftEdit param = do
             <> "Photos = COALESCE (?, Photos )"
             <> "WHERE Id = ? ;")
         ( queryHeader
-        , cat :: Maybe Int
+        , cat
         , PGArray <$> (mtags :: Maybe [Int])
         , cont
         , mph
@@ -310,10 +322,10 @@ draftPublish param = do
         (did :: Int,author)
     when (null drafts) (throwError ObjectNOTExists)
 
-    let draft = fromMaybe emptyDraft $ listToMaybe (drafts :: [Draft])
+    let draft = listToMaybe (drafts :: [Draft])
     news <- queryWithExcept pool
         (Query "SELECT Id FROM News WHERE Id = ? ;")
-        [dbpost_id draft]
+        [dbpost_id <$> draft]
     if null news
         then do
             nids <- queryWithExcept pool
@@ -340,17 +352,3 @@ draftPublish param = do
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Publish News id: " <> show nid
             DB.postGet [("token", mtoken),("id",(Just . show) nid)]
-
-emptyDraft :: Draft
-emptyDraft = Draft
-    { dbid       = 0
-    , dbpost_id    = 0
-    , dbheader    = ""
-    , dbreg_date  = ModifiedJulianDay 0
-    , dbautor_id   = 0
-    , dbcategory_id     = 0
-    , dbtags_id      = PGArray [0]
-    , dbcontent   = ""
-    , dbmain_photo =""
-    , dbphotos    = PGArray [""]
-    }
