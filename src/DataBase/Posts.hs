@@ -83,7 +83,7 @@ postGet param = do
     ndateLT <- parseMaybeParam "created_at__lt" param
     ndateGT <- parseMaybeParam "created_at__gt" param
     let nauthor = getMaybeParam "author" param
-    ntag <- parseMaybeParamList "tag" param
+    ntag <- parseMaybeParam "tag" param
     ntagAll <- parseMaybeParamList "tags__all" param
     ntagIn <- parseMaybeParamList "tags__in" param
     let nheader = getMaybeParam "header" param
@@ -98,7 +98,8 @@ postGet param = do
             -- Add name of Category
             <> " LEFT OUTER JOIN Categories c ON n.Category = c.id "
             -- Add names of Tags
-            <> "LEFT JOIN Tags t ON t.id = ANY(n.tags) "
+            <> "LEFT OUTER JOIN newstotags nt ON nt.newsid=n.id "
+            <> "LEFT JOIN Tags t ON t.id = nt.tagid "
             <> " WHERE "
             -- Add selection
             <> "(n.id = COALESCE (?,n.id))"
@@ -106,9 +107,11 @@ postGet param = do
             <> "AND (n.RegDate < COALESCE (?,n.RegDate+1))"
             <> "AND (n.RegDate > COALESCE (?,n.RegDate-1))"
             <> "AND (strpos(u.UserName,COALESCE(?,u.UserName))>0 )"
-            <> "AND (n.Tags && COALESCE(?,n.Tags))"
-            <> "AND (COALESCE (?,n.Tags) <@ n.Tags)"
-            <> "AND (COALESCE (?,n.Tags) && n.Tags)"
+            <> "AND (? IS NULL OR ? IN (SELECT tagid FROM newstotags WHERE newsid =n.Id))"
+            <> "AND (COALESCE (?,(SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
+            <> " <@ (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
+            <> "AND (COALESCE (?,(SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
+            <> " && (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
             <> "AND (strpos(n.Header,COALESCE (?,n.Header)) > 0)"
             <> "AND (strpos(n.Content,COALESCE (?,n.Content)) > 0)"
             -- Add search
@@ -127,7 +130,7 @@ postGet param = do
         , ndateLT :: Maybe Day
         , ndateGT :: Maybe Day
         , nauthor
-        , PGArray <$> (ntag :: Maybe [Int])
+        , ntag :: Maybe Int , ntag 
         , PGArray <$> (ntagAll :: Maybe [Int])
         , PGArray <$> (ntagIn :: Maybe [Int])
         , nheader
