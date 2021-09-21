@@ -20,7 +20,6 @@ import           Data.Time
 
 import           Data.Function
 import           DataBase
-import qualified DataBase.Posts                     as DB
 import           Exceptions
 import           Logger
 import           Prelude                            hiding (id)
@@ -367,11 +366,12 @@ draftPublish param = do
                     <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
                     <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;"
                     <> "DELETE FROM newstotags WHERE newsid=?;"
-                    <> "INSERT INTO newstotags (newsid,tagid);")
+                    <> "INSERT INTO newstotags (newsid,tagid) " 
+                    <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;" )
                 (did,nid,nid,nid,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Publish News id: " <> show nid
-    draft <- queryWithExcept pool
+    newdraft <- queryWithExcept pool
         (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
             <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
             <> "FROM Drafts d "
@@ -379,4 +379,4 @@ draftPublish param = do
             <> "WHERE d.Id = ? "
             <> "GROUP BY d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,d.Content,d.MainPhoto,d.Photos")
         [did]
-    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
+    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (newdraft :: [Draft])
