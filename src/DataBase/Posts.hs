@@ -90,8 +90,21 @@ postGet param = do
     let ncont = getMaybeParam "content" param
     let nsearch = getMaybeParam "search" param
     news <- queryWithExcept pool
-        (Query $ "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
-            <> "n.Content, n.MainPhoto, n.Photos  FROM News n"
+        (Query $ "WITH filters AS (SELECT"
+            <> " ? AS news_id,"
+            <> " ? AS ndate,"
+            <> " ? AS ndate_LT,"
+            <> " ? AS ndate_GT,"
+            <> " ? AS nauthor,"
+            <> " ? AS ntag,"
+            <> " ? AS ntag_ALL,"
+            <> " ? AS ntag_IN,"
+            <> " ? AS nheader,"
+            <> " ? AS ncontent,"
+            <> " lower(?) AS substring)"
+            <> "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
+            <> "n.Content, n.MainPhoto, n.Photos "
+            <> "FROM filters, News n"
             -- Add Name of Author
             <> " LEFT OUTER JOIN (Authors a JOIN Users u on a.userid = u.id)"
             <> " ON n.Author = a.id "
@@ -100,23 +113,26 @@ postGet param = do
             -- Add names of Tags
             <> "LEFT OUTER JOIN newstotags nt ON nt.newsid=n.id "
             <> "LEFT JOIN Tags t ON t.id = nt.tagid "
-            <> " WHERE "
+            <> "WHERE "
             -- Add selection
-            <> "(n.id = COALESCE (?,n.id))"
-            <> "AND (n.RegDate = COALESCE (?,n.RegDate))"
-            <> "AND (n.RegDate < COALESCE (?,n.RegDate+1))"
-            <> "AND (n.RegDate > COALESCE (?,n.RegDate-1))"
-            <> "AND (strpos(u.UserName,COALESCE(?,u.UserName))>0 )"
-            <> "AND (? IS NULL OR ? IN (SELECT tagid FROM newstotags WHERE newsid =n.Id))"
-            <> "AND (COALESCE (?,(SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
-            <> " <@ (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
-            <> "AND (COALESCE (?,(SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
-            <> " && (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id))"
-            <> "AND (strpos(n.Header,COALESCE (?,n.Header)) > 0)"
-            <> "AND (strpos(n.Content,COALESCE (?,n.Content)) > 0)"
+            <> "(filters.news_id IS NULL OR n.id = filters.news_id) "
+            <> "AND (filters.ndate IS NULL OR n.RegDate = filters.ndate) "
+            <> "AND (filters.ndate_LT IS NULL OR n.RegDate < filters.ndate_LT) "
+            <> "AND (filters.ndate_GT IS NULL OR n.RegDate > filters.ndate_GT) "
+            <> "AND (filters.nauthor IS NULL OR strpos(u.UserName,filters.nauthor)>0) "
+            <> "AND (filters.ntag IS NULL OR filters.ntag IN (SELECT tagid FROM newstotags WHERE newsid =n.Id)) "
+            <> "AND (filters.ntag_ALL IS NULL OR "
+            <> "     filters.ntag_ALL <@ (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id)) "
+            <> "AND (filters.ntag_IN IS NULL OR "
+            <> "     filters.ntag_IN && (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id)) "
+            <> "AND (filters.nheader IS NULL OR strpos(n.Header,filters.nheader) > 0) "
+            <> "AND (filters.ncontent IS NULL OR strpos(n.Content,filters.ncontent) > 0)"
             -- Add search
-            <> "AND (strpos (lower(n.Content || n.Header || u.UserName || t.tag  || c.CatName),"
-            <> " lower(COALESCE (?,n.Content || n.Header || u.UserName || t.tag  || c.CatName))) > 0)"
+            <> "AND (filters.substring IS NULL OR "
+            <> "     strpos (lower(n.Content),filters.substring) > 0) OR "
+            <> "     strpos (lower(n.Header),filters.substring) > 0) OR "
+            <> "     strpos (lower(t.tag),filters.substring) > 0) OR "
+            <> "     strpos (lower(c.CatName),filters.substring) > 0)) "
             -- group elements to correct work array_agg(tag)
             <> "GROUP BY n.Id, n.Header, n.RegDate, u.UserName, c.CatName, "
             <> "n.Content, n.MainPhoto, n.Photos "
@@ -130,7 +146,7 @@ postGet param = do
         , ndateLT :: Maybe Day
         , ndateGT :: Maybe Day
         , nauthor
-        , ntag :: Maybe Int , ntag 
+        , ntag :: Maybe Int 
         , PGArray <$> (ntagAll :: Maybe [Int])
         , PGArray <$> (ntagIn :: Maybe [Int])
         , nheader

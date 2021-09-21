@@ -359,7 +359,6 @@ draftPublish param = do
                 (nid,did,nid,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Publish News id: " <> show nid
-            DB.postGet [("token", mtoken),("id",(Just . show) nid)]
         else do
             let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (news :: [Only Int])
             _ <- execWithExcept pool
@@ -368,9 +367,16 @@ draftPublish param = do
                     <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
                     <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;"
                     <> "DELETE FROM newstotags WHERE newsid=?;"
-                    <> "INSERT INTO newstotags (newsid,tagid) " 
-                    <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;" )
+                    <> "INSERT INTO newstotags (newsid,tagid);")
                 (did,nid,nid,nid,did)
             liftIO $ Logger.info (Logger.lConfig env) $
                 "Publish News id: " <> show nid
-            DB.postGet [("token", mtoken),("id",(Just . show) nid)]
+    draft <- queryWithExcept pool
+        (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
+            <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
+            <> "FROM Drafts d "
+            <> "LEFT OUTER JOIN draftstotags t ON t.draftid=d.id "
+            <> "WHERE d.Id = ? "
+            <> "GROUP BY d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,d.Content,d.MainPhoto,d.Photos")
+        [did]
+    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
