@@ -6,7 +6,7 @@ This product allows you to record and retrieve information from the database.
 To use it you must install Postgresql and create a new database
 Copy files to work directory.
 
-CONFIGURATION
+##CONFIGURATION
 Please fill in the config.toml file
 
 Section [server] contains the server settings
@@ -36,7 +36,7 @@ http://localhost:8080/database.migrate
 
 
 
-API description
+##API description
 Only registered users can receive responses from the server.
 Some of the requests are available only to administrators
 When registering, the user receives a token
@@ -55,7 +55,7 @@ in response, you will receive a message in JSON format
 {"result":"Ok","object":[{"name":"Computer","id":5}]}
 
 
-Posts API.
+###Posts API.
 
 Command: 
 posts.get - Outputs all records that match the search parameters
@@ -98,7 +98,7 @@ limit - optional. number of posts per page
 page - optional. page number in the output
 
 
-Drafts API
+###Drafts API
 
 Command: 
 
