@@ -1,7 +1,7 @@
 # newsserver
 
 This is a training project.
-News web-server.
+News web-server.  
 This product allows you to record and retrieve information from the database.
 To use it you must install Postgresql and create a new database
 Copy files to work directory.
@@ -15,26 +15,19 @@ Section **[server]** contains the server settings.
 
 Section **[database]** contains the settings for postgresql and your database
 
-**host** - host name where your database is work
-
-**port** - port number of database
-
-**user** - user name to access to the database
-
-**pass** - password to access to the database
-
-**name** - name of database in postgresql
+**host** - host name where your database is work  
+**port** - port number of database  
+**user** - user name to access to the database  
+**pass** - password to access to the database  
+**name** - name of database in postgresql  
 
 Section **[logger]** contains logging settings
 
-**logPath** - log file path
-
-**logMinLevel** - minimum level of logging data.
-    can be : *Debug* | *Info* | *Warning* | *Error*
-
-**logTo** - Where to output log
+**logPath** - log file path  
+**logMinLevel** - minimum level of logging data.  
+    can be : *Debug* | *Info* | *Warning* | *Error*  
+**logTo** - Where to output log  
     can be : *LogToFile* | *LogToConsole*
-
 
 Before use start server, then send request to setup tables in database:
 
@@ -45,14 +38,14 @@ http://localhost:8080/database.migrate
 
 
 ## API description
-Only registered users can receive responses from the server. \n
-Some of the requests are available only to administrators. \n
-When registering, the user receives a token. \n
-When requesting data, you must specify the token as one of the request parameters.\n
+Only registered users can receive responses from the server.  
+Some of the requests are available only to administrators.  
+When registering, the user receives a token.  
+When requesting data, you must specify the token as one of the request parameters.
 
 To get data from the server, you must send a request like:
 
-"http://<server_web_addres>:<port>/<command>?<arg1>=<val1>&<arg2>=<val2>..."
+http://\<server_web_addres\>\:\<port\>\/\<command\>\?\<arg1\>\=\<val1\>\&\<arg2\>\=\<val2\>...
 
 for example
 
@@ -60,7 +53,7 @@ http://localhost:8080/tag.get?token=abc123&id=5
 
 in response, you will receive a message in JSON format
 
-""{"result":"Ok","object":[{"name":"Computer","id":5}]}""
+\{"result":"Ok","object":\[\{\"name\"\:\"Computer\",\"id\"\:5\}\]\}
 
 
 ### Posts API.
@@ -73,60 +66,36 @@ for example: http://localhost:8080/posts.get?token=ab12&author=Pall
 
 Available parameters:
 
-**token** - key token for user identification
+**token** - key token for user identification  
+**author** - optional. search for posts by the specified author.  
+supports search by part of the name  
+**header** - optional. find posts by header name  
+supports search by part of the name  
+**content** - optional. search for a string that can be found in text content  
+supports search by part of string  
+**created_at** - optional. date when post is created  
+**created_at__lt** - optional. news created earlier than the specified date  
+**created_at__gt** - optional. news created after the specified date  
+    </posts.get?created_at=2018-05-21>  
+    </posts.get?created_at__lt=2018-05-21>  
+    </posts.get?created_at__gt=2018-05-21>  
+**tag** - optional. tag id number  
+**tags__all** - optional. tag numbers that ALL should be present in the post  
+**tags__in** - optional. find posts that have at least one tag from the list  
+    </posts.get?tag=123>  
+    </posts.get?tags__in=[123,124,125]>  
+    </posts.get?tags__all=[123,124,125]>  
+**search** - optional. search for a string that can be found in text content, 
+header, tag name, category name or author name. case-insensitive.  
+**sort_by** - optional. sorting posts. possible values:  
+- *author* - sort by author name  
+- *date* - sort ba date  
+- *category* - sort by category name  
+- *photos* - sort by number of photos  
 
-**author** - optional. search for posts by the specified author.
-            supports search by part of the name
-
-**header** - optional. find posts by header name
-            supports search by part of the name
-
-**content** - optional. search for a string that can be found in text content 
-            supports search by part of string
-
-**created_at** - optional. date when post is created
-
-**created_at__lt** - optional. news created earlier than the specified date
-
-**created_at__gt** - optional. news created after the specified date
-
-</posts.get?created_at=2018-05-21>
-
-</posts.get?created_at__lt=2018-05-21>
-
-</posts.get?created_at__gt=2018-05-21>
-
-**tag** - optional. tag id number
-
-**tags__all** - optional. tag numbers that ALL should be present in the post
-
-**tags__in** - optional. find posts that have at least one tag from the list
-
-</posts.get?tag=123>
-
-</posts.get?tags__in=[123,124,125]>
-
-</posts.get?tags__all=[123,124,125]>
-
-**search** - optional. search for a string that can be found in text content, header,
-    tag name, category name or author name. case-insensitive.
-
-**sort_by** - optional. sorting posts. possible values:
-
-    *author* - sort by author name
-
-    *date* - sort ba date
-
-    *category* - sort by category name
-
-    *photos* - sort by number of photos
-
-You can ask for a paginated result. 
-
-**limit** - optional. number of posts per page
-
+You can ask for a paginated result.  
+**limit** - optional. number of posts per page  
 **page** - optional. page number in the output
-
 
 ### Drafts API
 
@@ -134,9 +103,9 @@ Command:
 
 `draft.add` - Add new draft to database
 
-PLEASE Remember the id to access the draft in future
+**PLEASE Remember the id to access the draft in future**
 
-for example: 
+for example:   
     http://localhost:8080/draft.add?token=author
     &header=Phone of 2021&category_id=5&tags_id=[1,2]
     &content=there are same info about cell phones
