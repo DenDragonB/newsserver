@@ -6,7 +6,7 @@ This product allows you to record and retrieve information from the database.
 To use it you must install Postgresql and create a new database
 Copy files to work directory.
 
-##CONFIGURATION
+## CONFIGURATION
 Please fill in the config.toml file
 
 Section [server] contains the server settings
@@ -55,54 +55,54 @@ in response, you will receive a message in JSON format
 {"result":"Ok","object":[{"name":"Computer","id":5}]}
 
 
-###Posts API.
+### Posts API.
 
 Command: 
-posts.get - Outputs all records that match the search parameters
+`posts.get` - Outputs all records that match the search parameters
 
 for example: http://localhost:8080/posts.get?token=ab12&author=Pall
 
 Available parameters:
-token - key token for user identification
-author - optional. search for posts by the specified author.
+**token** - key token for user identification
+**author** - optional. search for posts by the specified author.
             supports search by part of the name
-header - optional. find posts by header name
+**header** - optional. find posts by header name
             supports search by part of the name
-content - optional. search for a string that can be found in text content 
+**content** - optional. search for a string that can be found in text content 
             supports search by part of string
-created_at - optional. date when post is created
-created_at__lt - optional. news created earlier than the specified date
-created_at__gt - optional. news created after the specified date
-/posts.get?created_at=2018-05-21
-/posts.get?created_at__lt=2018-05-21
-/posts.get?created_at__gt=2018-05-21
+**created_at** - optional. date when post is created
+**created_at__lt** - optional. news created earlier than the specified date
+**created_at__gt** - optional. news created after the specified date
+</posts.get?created_at=2018-05-21>
+</posts.get?created_at__lt=2018-05-21>
+</posts.get?created_at__gt=2018-05-21>
 
-tag - optional. tag id number
-tags__all - optional. tag numbers that ALL should be present in the post
-tags__in - optional. find posts that have at least one tag from the list
-/posts.get?tag=123
-/posts.get?tags__in=[123,124,125]
-/posts.get?tags__all=[123,124,125]
+**tag** - optional. tag id number
+**tags__all** - optional. tag numbers that ALL should be present in the post
+**tags__in** - optional. find posts that have at least one tag from the list
+</posts.get?tag=123>
+</posts.get?tags__in=[123,124,125]>
+</posts.get?tags__all=[123,124,125]>
 
-search - optional. search for a string that can be found in text content, header,
+**search** - optional. search for a string that can be found in text content, header,
     tag name, category name or author name. case-insensitive.
 
-sort_by - optional. sorting posts. possible values:
-    author - sort by author name
-    date - sort ba date
-    category - sort by category name
-    photos - sort by number of photos
+**sort_by** - optional. sorting posts. possible values:
+    *author* - sort by author name
+    *date* - sort ba date
+    *category* - sort by category name
+    *photos* - sort by number of photos
 
 You can ask for a paginated result. 
-limit - optional. number of posts per page
-page - optional. page number in the output
+**limit** - optional. number of posts per page
+**page** - optional. page number in the output
 
 
-###Drafts API
+### Drafts API
 
 Command: 
 
-draft.add - Add new draft to database
+`draft.add` - Add new draft to database
 
 PLEASE Remember the id to access the draft in future
 
@@ -125,7 +125,7 @@ photos - optional. Links to additional photos in square brackets separated by co
 
 Command: 
 
-draft.edit - Edit an existing draft.
+`draft.edit` - Edit an existing draft.
 
 Available parameters:
 token - key token for user identification. Only author can edit draft.
@@ -136,9 +136,9 @@ If the parameter is included in the request, its new value will be saved
 
 Commands: 
 
-draft.get - Returns the author's draft by its id
-draft.delete - Delete an existing draft.
-draft.publish - Publish a new post or update the data in the post from the draft
+`draft.get` - Returns the author's draft by its id
+`draft.delete` - Delete an existing draft.
+`draft.publish` - Publish a new post or update the data in the post from the draft
 
 Available parameters:
 token - key token for user identification. Only author can get or delete draft.
