@@ -24,10 +24,8 @@ Section **[database]** contains the settings for postgresql and your database
 Section **[logger]** contains logging settings
 
 **logPath** - log file path  
-**logMinLevel** - minimum level of logging data.  
-    can be : *Debug* | *Info* | *Warning* | *Error*  
-**logTo** - Where to output log  
-    can be : *LogToFile* | *LogToConsole*
+**logMinLevel** - minimum level of logging data. Can be : *Debug* | *Info* | *Warning* | *Error*  
+**logTo** - Where to output log. Can be : *LogToFile* | *LogToConsole*
 
 Before use start server, then send request to setup tables in database:
 
@@ -47,13 +45,11 @@ To get data from the server, you must send a request like:
 
 http://\<server_web_addres\>\:\<port\>\/\<command\>\?\<arg1\>\=\<val1\>\&\<arg2\>\=\<val2\>...
 
-for example
-
-http://localhost:8080/tag.get?token=abc123&id=5
+for example  
+    >http://localhost:8080/tag.get?token=abc123&id=5
 
 in response, you will receive a message in JSON format
-
-\{"result":"Ok","object":\[\{\"name\"\:\"Computer\",\"id\"\:5\}\]\}
+    \{"result":"Ok","object":\[\{\"name\"\:\"Computer\",\"id\"\:5\}\]\}
 
 
 ### Posts API.
@@ -62,7 +58,8 @@ Command:
 
 `posts.get` - Outputs all records that match the search parameters
 
-for example: http://localhost:8080/posts.get?token=ab12&author=Pall
+for example:  
+    >http://localhost:8080/posts.get?token=ab12&author=Pall
 
 Available parameters:
 
@@ -76,15 +73,15 @@ supports search by part of string
 **created_at** - optional. date when post is created  
 **created_at__lt** - optional. news created earlier than the specified date  
 **created_at__gt** - optional. news created after the specified date  
-    </posts.get?created_at=2018-05-21>  
-    </posts.get?created_at__lt=2018-05-21>  
-    </posts.get?created_at__gt=2018-05-21>  
+    >/posts.get?created_at=2018-05-21
+    >/posts.get?created_at__lt=2018-05-21
+    >/posts.get?created_at__gt=2018-05-21
 **tag** - optional. tag id number  
 **tags__all** - optional. tag numbers that ALL should be present in the post  
 **tags__in** - optional. find posts that have at least one tag from the list  
-    </posts.get?tag=123>  
-    </posts.get?tags__in=[123,124,125]>  
-    </posts.get?tags__all=[123,124,125]>  
+    /posts.get?tag=123  
+    /posts.get?tags__in=[123,124,125]  
+    /posts.get?tags__all=[123,124,125]  
 **search** - optional. search for a string that can be found in text content, 
 header, tag name, category name or author name. case-insensitive.  
 **sort_by** - optional. sorting posts. possible values:  
@@ -106,7 +103,7 @@ Command:
 **PLEASE Remember the id to access the draft in future**
 
 for example:   
-    http://localhost:8080/draft.add?token=author
+    >http://localhost:8080/draft.add?token=author
     &header=Phone of 2021&category_id=5&tags_id=[1,2]
     &content=there are same info about cell phones
     &main_photo=http://localhost:8080/photos/photo.jpg
