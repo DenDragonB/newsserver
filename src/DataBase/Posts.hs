@@ -21,6 +21,7 @@ import           Data.Text                          (Text)
 import           Data.Time
 
 import           DataBase
+
 import           Exceptions
 import           Logger
 import           Prelude                            hiding (id)
@@ -72,11 +73,6 @@ postGet ::
     ) => [( String , Maybe String )]
     -> m A.Value
 postGet param = do
-    env <- ask
-    -- let mtoken = getParam "token" param
-    -- token <- mtoken & fromMaybeM NotFound
-
-    let pool = dbConn env
     let nsort = fromMaybe "" $ getMaybeParam "sort_by" param
     nid <- parseMaybeParam "id" param
     ndate <- parseMaybeParam "created_at" param
@@ -89,7 +85,7 @@ postGet param = do
     let nheader = getMaybeParam "header" param
     let ncont = getMaybeParam "content" param
     let nsearch = getMaybeParam "search" param
-    news <- queryWithExcept pool
+    news <- queryWithExcept
         (Query $ "WITH filters AS (SELECT"
             <> " ?::INT AS news_id,"
             <> " ?::DATE AS ndate,"
@@ -147,7 +143,7 @@ postGet param = do
         , ndateLT :: Maybe Day
         , ndateGT :: Maybe Day
         , nauthor
-        , ntag :: Maybe Int 
+        , ntag :: Maybe Int
         , PGArray <$> (ntagAll :: Maybe [Int])
         , PGArray <$> (ntagIn :: Maybe [Int])
         , nheader

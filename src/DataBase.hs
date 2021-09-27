@@ -5,21 +5,19 @@
 
 module DataBase where
 
-import qualified Data.Aeson                         as A
+import qualified Data.Aeson                 as A
 import           GHC.Generics
 
 import           Control.Exception
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import qualified Data.ByteString.UTF8               as BS
-import           Text.Read                          (readMaybe)
+import qualified Data.ByteString.UTF8       as BS
+import           Text.Read                  (readMaybe)
 
 import           Data.Int
 import           Data.Maybe
 import           Data.Pool
 import           Database.PostgreSQL.Simple
-import           Database.PostgreSQL.Simple.ToField (ToField)
-import           Database.PostgreSQL.Simple.Types
 
 import qualified Exceptions
 import qualified Logger
@@ -71,18 +69,19 @@ queryWithExcept ::
     , Logger.HasLogger env
     , MonadError Exceptions.Errors m
     , MonadIO m
-    ,ToRow q, FromRow r) => DBPool -> Query -> q -> m [r]
-queryWithExcept pool querystring q = do
-    env <- ask
+    ,ToRow q, FromRow r) => Query -> q -> m [r]
+queryWithExcept querystring q = do
+    pool <- asks dbConn
+    logConfig <- asks Logger.lConfig
     res <- liftIO $ try (queryDBsafe pool querystring q)
     case res of
         Right out -> return out
         Left err -> case fromException err of
             Nothing -> do
-                liftIO . Logger.error (Logger.lConfig env) $ show err
+                liftIO . Logger.error logConfig $ show err
                 throwError Exceptions.PostgreError
             Just (SqlError _ _ msg _ _) -> do
-                liftIO . Logger.error (Logger.lConfig env)
+                liftIO . Logger.error logConfig
                     $ BS.toString msg
                 throwError Exceptions.PostgreError
 
@@ -92,18 +91,19 @@ execWithExcept ::
     , Logger.HasLogger env
     , MonadError Exceptions.Errors m
     , MonadIO m
-    ,ToRow q) => DBPool -> Query -> q -> m Int64
-execWithExcept pool querystring q = do
-    env <- ask
+    ,ToRow q) => Query -> q -> m Int64
+execWithExcept querystring q = do
+    pool <- asks dbConn
+    logConfig <- asks Logger.lConfig
     res <- liftIO $ try (execDBsafe pool querystring q)
     case res of
         Right out -> return out
         Left err -> case fromException err of
             Nothing -> do
-                liftIO . Logger.error (Logger.lConfig env) $ show err
+                liftIO . Logger.error logConfig $ show err
                 throwError Exceptions.PostgreError
             Just (SqlError _ _ msg _ _) -> do
-                liftIO . Logger.error (Logger.lConfig env)
+                liftIO . Logger.error logConfig
                     $ BS.toString msg
                 throwError Exceptions.PostgreError
 
@@ -182,20 +182,3 @@ isBracket mc = case mc of
 
 splitCommas :: String -> [String]
 splitCommas s = words $ map (\c -> if c == ',' then ' ' else c) s
-
-existItemByField ::
-    ( MonadReader env m
-    , HasDataBase env
-    , Logger.HasLogger env
-    , MonadError Exceptions.Errors m
-    , MonadIO m
-    , ToField a
-    ) => String -> String -> a -> m Bool
-existItemByField table field value = do
-    pool <- asks dbConn
-    isExist <- queryWithExcept pool
-                (Query $ "SELECT EXISTS (SELECT id FROM "
-                    <> BS.fromString table <> " WHERE " 
-                    <> BS.fromString field <> " = ?);")
-                [value]
-    return (maybe False fromOnly $ listToMaybe isExist)

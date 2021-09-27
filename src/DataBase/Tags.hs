@@ -11,10 +11,11 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
 import           Data.Maybe                         (isNothing, listToMaybe)
-import           Data.Text                          (Text, pack) 
+import           Data.Text                          (Text, pack)
 import           GHC.Generics
 
 import           DataBase
+import           DataBase.Postgres
 import           DataBase.Users
 import           Exceptions
 import           Logger
@@ -35,26 +36,21 @@ tagAdd ::
     ) => [( String , Maybe String )]
     -> m A.Value
 tagAdd param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
             tagname <- getParamM "name" param
+            isTag <- existItemByField "Tags" "Tag" tagname
+            when isTag (throwError ObjectExists)
 
-            let pool = dbConn env
-            isTag <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ?);")
-                [tagname]
-            when (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectExists)
-            _ <- execWithExcept pool
+            _ <- execWithExcept
                 (Query "INSERT INTO Tags (Tag) VALUES (?);")
                 [tagname]
-            liftIO $ Logger.info (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
                 "Add Tag: " <> tagname
-            tag <- queryWithExcept pool
-                (Query "SELECT * FROM Tags WHERE Tag = ? ;")
-                [tagname]
-            return $ A.toJSON $ listToMaybe (tag :: [Tag])
+            tag <- selectMaybeItemByField "Tags" "Tag" tagname
+            return $ A.toJSON (tag :: Maybe Tag)
         _ -> throwError NotFound
 
 tagEdit ::
@@ -66,7 +62,6 @@ tagEdit ::
     ) => [( String , Maybe String )]
     -> m A.Value
 tagEdit param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
@@ -76,24 +71,19 @@ tagEdit param = do
             let tname = getMaybeParam "name" param
             when (isNothing tname) $ throwError $ WrongQueryParameter "name"
 
-            let pool = dbConn env
-            isTag <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Id = ? );")
-                [tid :: Maybe Int]
-            isTagName <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Tag = ? );")
-                [tname]
-            unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
-            when (maybe False fromOnly $ listToMaybe isTagName) (throwError ObjectExists)
-            _ <- execWithExcept pool
+            isTag <- existItemByField "Tags" "Id" (tid :: Maybe Int)
+            unless isTag (throwError ObjectNOTExists)
+            isTagName <- existItemByField "Tags" "Tag" tname
+            when isTagName (throwError ObjectExists)
+
+            _ <- execWithExcept
                 (Query "UPDATE Tags SET Tag = ? WHERE Id = ? ;")
                 (tname , tid)
-            liftIO $ Logger.info (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
                 "Edit Tag id: " <> show tid
-            tag <- queryWithExcept pool
-                (Query "SELECT * FROM Tags WHERE Id = ? ;")
-                [tid]
-            return $ A.toJSON $ listToMaybe (tag :: [Tag])
+            tag <- selectMaybeItemByField "Tags" "Id" tid
+            return $ A.toJSON (tag :: Maybe Tag)
         _ -> throwError NotFound
 
 tagGet ::
@@ -105,14 +95,12 @@ tagGet ::
     ) => [( String , Maybe String )]
     -> m A.Value
 tagGet param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (True , _ ) -> do
-            let pool = dbConn env
             tid <- parseMaybeParam "id" param
             let tname = getMaybeParam "name" param
-            tag <- queryWithExcept pool
+            tag <- queryWithExcept
                 (Query $ "SELECT id,tag FROM Tags WHERE"
                     <> "(id = COALESCE (?, id))"
                     <> "AND (tag = COALESCE (?, tag))"
@@ -131,21 +119,19 @@ tagDelete ::
     ) => [( String , Maybe String )]
     -> m A.Value
 tagDelete param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
             tid <- parseParamM "id" param
 
-            let pool = dbConn env
-            isTag <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Tags WHERE Id = ? );")
-                [tid :: Int]
-            unless (maybe False fromOnly $ listToMaybe isTag) (throwError ObjectNOTExists)
-            _ <- execWithExcept pool
+            isTag <- existItemByField "Tags" "Id" (tid :: Maybe Int)
+            unless isTag (throwError ObjectNOTExists)
+
+            _ <- execWithExcept
                 (Query "DELETE FROM Tags WHERE Id = ? ;")
                 [tid]
-            liftIO $ Logger.info (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
                 "Delete Tag id: " <> show tid
             return $ A.String $ pack $ "Tag with id " <> show tid <> " deleted"
         _ -> throwError NotFound

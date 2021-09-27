@@ -16,6 +16,7 @@ import           Data.Text                          (Text, pack)
 import           GHC.Generics
 
 import           DataBase
+import           DataBase.Postgres
 import           DataBase.Users
 import           Exceptions
 import           Logger
@@ -37,7 +38,6 @@ categoryAdd ::
     ) => [( String , Maybe String )]
     -> m A.Value
 categoryAdd param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
@@ -46,26 +46,20 @@ categoryAdd param = do
             mpar <-  parseMaybeParam "parent_id" param
             let par = fromMaybe 0 (mpar :: Maybe Int)
 
-            let pool = dbConn env
-            isCat <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
-                [catName]
-            isPar <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-                [par]
-            when (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectExists)
-            unless (par == 0 || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
-            liftIO $ Logger.debug (Logger.lConfig env) $
-                "Try add category name: " <> catName <> "; parent: "<> show par
-            _ <- execWithExcept pool
+
+            isCat <- existItemByField "Categories" "CatName" catName
+            when isCat (throwError ObjectExists)
+            isPar <- existItemByField "Categories" "Id" par
+            unless (par == 0 || isPar) (throwError ParentNOTExists)
+
+            _ <- execWithExcept
                 (Query "INSERT INTO Categories (CatName, Parent) VALUES (?,?);")
                 (catName,par)
-            liftIO $ Logger.info (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
                 "Add category name: " <> catName
-            cat <- queryWithExcept pool
-                (Query "SELECT * FROM Categories WHERE CatName = ? ;")
-                [catName]
-            return $ A.toJSON $ listToMaybe (cat :: [Category])
+            cat <- selectMaybeItemByField "Categories" "CatName" catName
+            return $ A.toJSON (cat :: Maybe Category)
         _ -> throwError NotFound
 
 categoryEdit ::
@@ -77,7 +71,6 @@ categoryEdit ::
     ) => [( String , Maybe String )]
     -> m A.Value
 categoryEdit param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
@@ -86,32 +79,24 @@ categoryEdit param = do
             let cname = getMaybeParam "name" param
             par <- parseMaybeParam "parent_id" param
 
-            let pool = dbConn env
-            isCat <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-                [cid :: Int]
-            isCatName <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE CatName = ?);")
-                [cname]
-            isPar <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-                [par :: Maybe Int]
-            unless (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectNOTExists)
-            unless (isNothing par || maybe False fromOnly (listToMaybe isPar)) (throwError ParentNOTExists)
-            when (maybe False fromOnly $ listToMaybe isCatName) (throwError ObjectExists)
+            isCat <- existItemByField "Categories" "Id" (cid :: Int)
+            unless isCat (throwError ObjectNOTExists)
+            isCatName <- existItemByField "Categories" "CatName" cname
+            when isCatName (throwError ObjectExists)
+            isPar <- existItemByField "Categories" "Id" (par :: Maybe Int)
+            unless (isNothing par || isPar) (throwError ParentNOTExists)
 
-            _ <- execWithExcept pool
+            _ <- execWithExcept
                 (Query "UPDATE Categories SET "
                     <> "CatName = COALESCE (?, CatName),"
                     <> "Parent = COALESCE (?, Parent )"
                     <> "WHERE Id = ?;")
                 (cname,par,cid)
-            liftIO $ Logger.info (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
                 "Edit category id: " <> show cid
-            cat <- queryWithExcept pool
-                (Query "SELECT * FROM Categories WHERE Id = ?;")
-                [cid]
-            return $ A.toJSON $ listToMaybe (cat :: [Category])
+            cat <- selectMaybeItemByField "Categories" "Id" cid
+            return $ A.toJSON (cat :: Maybe Category)
         _ -> throwError NotFound
 
 categoryGet ::
@@ -123,15 +108,13 @@ categoryGet ::
     ) => [( String , Maybe String )]
     -> m A.Value
 categoryGet param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (True , _ ) -> do
-            let pool = dbConn env
             cid <- parseMaybeParam "id" param
             let cname = getMaybeParam "name" param
             cpar <- parseMaybeParam "parent_id" param
-            cat <- queryWithExcept pool
+            cat <- queryWithExcept
                 (Query $ "SELECT id,CatName,Parent FROM Categories WHERE"
                     <> "(id = COALESCE (?, id))"
                     <> "AND (CatName = COALESCE (?, CatName)) "
@@ -151,25 +134,20 @@ categoryDelete ::
     ) => [( String , Maybe String )]
     -> m A.Value
 categoryDelete param = do
-    env <- ask
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
             cid <- parseParamM "id" param
+            isCat <- existItemByField "Categories" "Id" (cid :: Int)
+            unless isCat (throwError ObjectNOTExists)
+            isHaveSub <- existItemByField "Categories" "Parent" cid
+            when isHaveSub (throwError CategoryWithSub)
 
-            let pool = dbConn env
-            isCat <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-                [cid :: Int]
-            isHaveSub <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Parent = ?);")
-                [cid]
-            unless (maybe False fromOnly $ listToMaybe isCat) (throwError ObjectNOTExists)
-            when (maybe False fromOnly $ listToMaybe isHaveSub) (throwError CategoryWithSub)
-            _ <- execWithExcept pool
+            _ <- execWithExcept
                 (Query "DELETE FROM Categories WHERE Id = ?;")
                 [cid]
-            liftIO $ Logger.info (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
                 "Delete category id: " <> show cid
             return $ A.String $ "Category with id " <> (pack . show) cid <>" deleted"
         _ -> throwError NotFound

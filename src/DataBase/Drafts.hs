@@ -14,12 +14,14 @@ import           GHC.Generics                       (Generic)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import           Data.Maybe                         (fromMaybe, listToMaybe, isNothing)
+import           Data.Maybe                         (fromMaybe, isNothing,
+                                                     listToMaybe)
 import           Data.Text                          (Text, pack)
 import           Data.Time
 
 import           Data.Function
 import           DataBase
+import           DataBase.Postgres
 import           Exceptions
 import           Logger
 import           Prelude                            hiding (id)
@@ -74,66 +76,62 @@ draftAdd ::
     ) => [( String , Maybe String )]
     -> m A.Value
 draftAdd param = do
-    env <- ask
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    let pool = dbConn env
-    authors <- queryWithExcept pool
+    authors <- queryWithExcept
         (Query "SELECT id FROM Authors WHERE UserId = "
             <> "(SELECT Id FROM Users WHERE Token = ? );")
         [token]
     case (authors :: [Only Int]) of
         [author] -> do
             queryHeader <- getParamM "header" param
-            
+
             cat <- parseParamM "category_id" param
-            isCat <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-                [cat :: Int]
-            unless (maybe False fromOnly $ listToMaybe isCat) 
-                (throwError $ WrongQueryParameter "category_id")
+            isCat <- existItemByField "Categories" "Id" (cat :: Int)
+            unless isCat (throwError $ WrongQueryParameter "category_id")
 
             mtags <- parseMaybeParamList "tags_id" param
             let tags = fromMaybe [] (mtags :: Maybe [Int])
-            bdtags <- queryWithExcept pool
+            bdtags <- queryWithExcept
                 (Query "SELECT id FROM Tags WHERE"
                     <> "(array_position (?,id) IS NOT NULL)")
                 [PGArray tags]
-            unless (length tags==length (bdtags :: [Only Int])) 
+            unless (length tags==length (bdtags :: [Only Int]))
                 (throwError (WrongQueryParameter "tags_id"))
-                
+
             let mcont = getMaybeParam "content" param
             let mmph = getMaybeParam "main_photo" param
             let mphs = getMaybeParamList "photos" param
-            
+
             let cont = fromMaybe "" mcont
             let mph = fromMaybe "" mmph
             let phs = fromMaybe [] mphs
-            dids <- queryWithExcept pool
+            dids <- queryWithExcept
                 (Query "INSERT INTO Drafts "
                     <> "(Header,RegDate,News,Author,Category,Content,MainPhoto,Photos)"
                     <> " VALUES ( ?,NOW(),0,?,?,?,?, ?) RETURNING Id;")
                 (queryHeader, fromOnly author,cat,cont,mph, PGArray phs)
             let newid = listToMaybe $ fromOnly <$> (dids :: [Only Int])
-            if null tags 
+            logConfig <- asks Logger.lConfig
+            if null tags
                 then do
-                    _ <- execWithExcept pool
+                    _ <- execWithExcept
                         (Query "Delete from draftstotags where draftid=?;")
                         [newid]
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Draft: " <> queryHeader                
+                    liftIO $ Logger.info logConfig $
+                        "Add Draft: " <> queryHeader
                 else do
-                    _ <- execWithExcept pool
+                    _ <- execWithExcept
                         (Query "Delete from draftstotags where draftid=?;"
                         <> "Insert into draftstotags (draftid,tagid) "
                         <> "(SELECT ?,UNNEST (?)) ON CONFLICT DO NOTHING;")
                         ( newid
                         , newid
                         , PGArray tags)
-                    liftIO $ Logger.info (Logger.lConfig env) $
-                        "Add Draft: " <> queryHeader 
-            draft <- queryWithExcept pool
+                    liftIO $ Logger.info logConfig $
+                        "Add Draft: " <> queryHeader
+            draft <- queryWithExcept
                 (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,"
                     <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
                     <> "FROM Drafts d "
@@ -153,13 +151,10 @@ draftEdit ::
     ) => [( String , Maybe String )]
     -> m A.Value
 draftEdit param = do
-    env <- ask
-
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    let pool = dbConn env
-    authors <- queryWithExcept pool
+    authors <- queryWithExcept
         (Query "SELECT id FROM Authors WHERE UserId = "
             <> "(SELECT Id FROM Users WHERE Token = ?);")
         [token]
@@ -167,33 +162,30 @@ draftEdit param = do
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
 
     did <- parseParamM "id" param
-    isDraft <- queryWithExcept pool
+    isDraft <- queryWithExcept
         (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
         (did :: Int,author)
     unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
 
     let queryHeader = getMaybeParam "header" param
-    
+
     cat <- parseMaybeParam "category_id" param
-    isCat <- queryWithExcept pool
-        (Query "SELECT EXISTS (SELECT id FROM Categories WHERE Id = ?);")
-        [cat :: Maybe Int]
-    unless (isNothing cat || maybe False fromOnly (listToMaybe isCat))
-        (throwError $ WrongQueryParameter "category_id")
+    isCat <- existItemByField "Categories" "Id" (cat :: Maybe Int)
+    unless (isNothing cat || isCat) (throwError $ WrongQueryParameter "category_id")
 
     mtags <- parseMaybeParamList "tags_id" param
     let tags = fromMaybe [] (mtags :: Maybe [Int])
-    bdtags <- queryWithExcept pool
+    bdtags <- queryWithExcept
         (Query "SELECT id FROM Tags WHERE"
             <> "(array_position (?,id) IS NOT NULL)")
         [PGArray tags]
-    unless (length tags==length (bdtags :: [Only Int])) 
+    unless (length tags==length (bdtags :: [Only Int]))
                 (throwError (WrongQueryParameter "tags_id"))
     let cont = getMaybeParam "content" param
     let mph = getMaybeParam "main_photo" param
     let phs = getMaybeParamList "photos" param
 
-    _ <- execWithExcept pool
+    _ <- execWithExcept
         (Query "UPDATE Drafts SET "
             <> "Header = COALESCE (?, Header ),"
             <> "Category = COALESCE (?, Category ),"
@@ -207,27 +199,28 @@ draftEdit param = do
         , mph
         , PGArray <$> phs
         , did)
+    logConfig <- asks Logger.lConfig
     case mtags of
         Nothing -> do
-            liftIO $ Logger.info (Logger.lConfig env) $
+            liftIO $ Logger.info logConfig $
                 "Edit Draft id: " <> show did
         Just [] -> do
-            _ <- execWithExcept pool
+            _ <- execWithExcept
                 (Query "Delete from draftstotags where draftid=?;")
                 [ did ]
-            liftIO $ Logger.info (Logger.lConfig env) $
+            liftIO $ Logger.info logConfig $
                 "Edit Draft id: " <> show did
         _ -> do
-            _ <- execWithExcept pool
+            _ <- execWithExcept
                 (Query "Delete from draftstotags where draftid=?;"
                     <> "Insert into draftstotags (draftid,tagid) "
                     <> "(SELECT ?,UNNEST (?)) ON CONFLICT DO NOTHING;")
                 ( did
                 , did
                 , PGArray tags)
-            liftIO $ Logger.info (Logger.lConfig env) $
-                "Edit Draft id: " <> show did                
-    draft <- queryWithExcept pool
+            liftIO $ Logger.info logConfig $
+                "Edit Draft id: " <> show did
+    draft <- queryWithExcept
         (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
             <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
             <> "FROM Drafts d "
@@ -246,13 +239,10 @@ draftGet ::
     ) => [( String , Maybe String )]
     -> m A.Value
 draftGet param = do
-    env <- ask
-
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    let pool = dbConn env
-    authors <- queryWithExcept pool
+    authors <- queryWithExcept
         (Query "SELECT id FROM Authors WHERE UserId = "
             <> "(SELECT Id FROM Users WHERE Token = ?);")
         [token]
@@ -260,7 +250,7 @@ draftGet param = do
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
 
     did <- parseParamM "id" param
-    draft <- queryWithExcept pool
+    draft <- queryWithExcept
         (Query $ "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
             <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
             <> "FROM Drafts d "
@@ -282,27 +272,25 @@ draftDelete ::
     ) => [( String , Maybe String )]
     -> m A.Value
 draftDelete param = do
-    env <- ask
-
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    let pool = dbConn env
-    authors <- queryWithExcept pool
+    authors <- queryWithExcept
         (Query "SELECT id FROM Authors WHERE UserId = "
             <> "(SELECT Id FROM Users WHERE Token = ?);")
         [token]
     when (null authors) (throwError AuthorNOTExists)
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
     did <- parseParamM "id" param
-    isDraft <- queryWithExcept pool
+    isDraft <- queryWithExcept
         (Query "SELECT EXISTS (SELECT Id FROM Drafts WHERE Id = ? AND Author = ? );")
         (did :: Int,author)
     unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
-    _ <- liftIO $ execDBsafe pool
+    _ <- execWithExcept
         (Query "DELETE FROM Drafts WHERE Id = ? AND Author = ? ;")
         (did,author)
-    liftIO $ Logger.info (Logger.lConfig env) $
+    logConfig <- asks Logger.lConfig
+    liftIO $ Logger.info logConfig $
         "Delete Draft id: " <> show did
     return $ A.String $ pack $ "Draft with id " <> show did <> " deleted"
 
@@ -315,20 +303,17 @@ draftPublish ::
     ) => [( String , Maybe String )]
     -> m A.Value
 draftPublish param = do
-    env <- ask
-
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    let pool = dbConn env
-    authors <- queryWithExcept pool
+    authors <- queryWithExcept
         (Query "SELECT id FROM Authors WHERE UserId = "
             <> "(SELECT Id FROM Users WHERE Token = ?);")
         [token]
     when (null authors) (throwError AuthorNOTExists)
     let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
     did <- parseParamM "id" param
-    drafts <- queryWithExcept pool
+    drafts <- queryWithExcept
         (Query $ "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
             <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
             <> "FROM Drafts d "
@@ -339,39 +324,40 @@ draftPublish param = do
     when (null drafts) (throwError ObjectNOTExists)
 
     let draft = listToMaybe (drafts :: [Draft])
-    news <- queryWithExcept pool
+    news <- queryWithExcept
         (Query "SELECT Id FROM News WHERE Id = ? ;")
         [dbpost_id <$> draft]
+    logConfig <- asks Logger.lConfig
     if null news
         then do
-            nids <- queryWithExcept pool
+            nids <- queryWithExcept
                 (Query "INSERT INTO News "
                     <> "(Header,RegDate,Author,Category,Content,MainPhoto,Photos)"
                     <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
                     <> "FROM Drafts WHERE Id = ? ) RETURNING Id;")
                 [did]
             let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (nids :: [Only Int])
-            _ <- execWithExcept pool
-                (Query "INSERT INTO newstotags (newsid,tagid) " 
-                    <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;" 
+            _ <- execWithExcept
+                (Query "INSERT INTO newstotags (newsid,tagid) "
+                    <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;"
                     <> "UPDATE Drafts SET News = ? WHERE Id = ? ;")
                 (nid,did,nid,did)
-            liftIO $ Logger.info (Logger.lConfig env) $
+            liftIO $ Logger.info logConfig $
                 "Publish News id: " <> show nid
         else do
             let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (news :: [Only Int])
-            _ <- execWithExcept pool
+            _ <- execWithExcept
                 (Query "UPDATE News SET "
                     <> "(Header,RegDate,Author,Category,Content,MainPhoto,Photos) = "
                     <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
                     <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;"
                     <> "DELETE FROM newstotags WHERE newsid=?;"
-                    <> "INSERT INTO newstotags (newsid,tagid) " 
+                    <> "INSERT INTO newstotags (newsid,tagid) "
                     <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;" )
                 (did,nid,nid,nid,did)
-            liftIO $ Logger.info (Logger.lConfig env) $
+            liftIO $ Logger.info logConfig $
                 "Publish News id: " <> show nid
-    newdraft <- queryWithExcept pool
+    newdraft <- queryWithExcept
         (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
             <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
             <> "FROM Drafts d "

@@ -1,7 +1,7 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE OverloadedStrings     #-}
 
 module DataBase.Users where
 
@@ -20,6 +20,7 @@ import           Data.Time
 import           GHC.Generics
 
 import           DataBase
+import           DataBase.Postgres
 import           Exceptions
 import           Logger
 import           Prelude                          hiding (id)
@@ -73,13 +74,10 @@ userAdd param = do
     let mLastName = getMaybeParam "last_name" param
     let mAvatar = getMaybeParam "avatar" param
 
-    env <- ask
-    let pool = dbConn env
-    oldUser <- queryWithExcept pool
-        (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-        [userName]
-    when (maybe False fromOnly $ listToMaybe oldUser) (throwError ObjectExists)
-    _ <- execWithExcept pool
+    oldUser <- existItemByField "Users" "UserName" userName
+    when oldUser (throwError ObjectExists)
+
+    _ <- execWithExcept
         (Query "INSERT INTO Users "
         <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
         <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
@@ -89,10 +87,11 @@ userAdd param = do
         , userName
         , userPass
         , (BS.toString . makeHash . BS.fromString) (userName <> userPass))
-    u <- queryWithExcept pool
+    u <- queryWithExcept
         (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
         (userName, mFirstName, mLastName)
-    liftIO $ Logger.info (Logger.lConfig env) $ "Add user: " <> show u
+    logConfig <- asks Logger.lConfig
+    liftIO $ Logger.info logConfig $ "Add user: " <> show u
     return $ A.toJSON $ listToMaybe (u :: [User])
 
 
@@ -105,23 +104,20 @@ findToken ::
     ) => [( String , Maybe String )]
     -> m (Maybe (Bool,Bool))
 findToken param = do
-    env <- ask
     let mToken = getMaybeParam "token" param
     case mToken of
         Nothing -> return Nothing
         Just queryToken -> do
-            liftIO $ Logger.debug (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.debug logConfig $
                         "Request from user with token: " <> queryToken
-            let pool = dbConn env
-            userExist <- queryWithExcept pool
-                    (Query "SELECT EXISTS (SELECT id FROM Users WHERE token = ? );")
-                    [queryToken]
-            admExist <- queryWithExcept pool
+            userExist <- existItemByField "Users" "token" queryToken
+            admExist <- queryWithExcept
                     (Query "SELECT Adm FROM Users WHERE token = ? ;")
                     [queryToken]
             case admExist of
-                [] -> return $ Just ( maybe False fromOnly $ listToMaybe userExist , False)
-                _  -> return $ Just ( maybe False fromOnly $ listToMaybe userExist , maybe False fromOnly $ listToMaybe admExist)
+                [] -> return $ Just ( userExist , False)
+                _  -> return $ Just ( userExist , maybe False fromOnly $ listToMaybe admExist)
 
 userGet ::
     ( MonadReader env m
@@ -136,12 +132,10 @@ userGet param = do
     if isNothing queryToken
         then throwError NotFound
         else do
-            env <- ask
             let mFirstName = getMaybeParam "first_name" param
             let mLastName = getMaybeParam "last_name" param
             let mUserName = getMaybeParam "name" param
-            let pool = dbConn env
-            u <- queryWithExcept pool
+            u <- queryWithExcept
                 (Query $ "SELECT id,FirstName,LastName,Avatar,UserName,RegDate FROM Users WHERE"
                     <> "(UserName = COALESCE (?,UserName))"
                     <> "AND (FirstName = COALESCE (?,FirstName))"
@@ -166,12 +160,11 @@ userDel param = do
     case admin of
         Just (_,True ) -> do
             uid <- parseParamM "id" param
-            env <- ask
-            let pool = dbConn env
-            _ <- execWithExcept pool
+            _ <- execWithExcept
                 (Query "DELETE FROM Users WHERE id = ? ;")
                 [uid :: Int]
-            liftIO $ Logger.info (Logger.lConfig env) $
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
                 "Delete user id: " <> show uid
             return $ A.String $ T.pack $ "User with id "<> show uid <>" deleted"
         _ -> throwError NotFound
@@ -185,7 +178,6 @@ userNewPass ::
     ) => [( String , Maybe String )]
     -> m A.Value
 userNewPass param = do
-    env <- ask
     let mUserName = getMaybeParam "name" param
     uName <- mUserName & fromMaybeM NotFound
     when (null uName) (throwError $ WrongQueryParameter "name")
@@ -198,24 +190,22 @@ userNewPass param = do
     uNewPass <- mNewPass & fromMaybeM NotFound
     when (null uNewPass) (throwError $ WrongQueryParameter "new_pass")
 
-    let pool = dbConn env
-    isUser <- queryWithExcept pool
-        (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? );")
-        [uName]
-    unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
-    isPass <- queryWithExcept pool
+    isUser <- existItemByField "Users" "UserName" uName
+    unless isUser (throwError UserNOTExists)
+
+    isPass <- queryWithExcept
         (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));")
         (uName,uPass)
     unless (maybe False fromOnly $ listToMaybe isPass) (throwError WrongPass)
-    _ <- execWithExcept pool
+
+    _ <- execWithExcept
         (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
         ( uNewPass
         , (BS.toString . makeHash . BS.fromString) (uName <> uNewPass)
         , uName)
-    u <- queryWithExcept pool
-        (Query "SELECT * FROM Users WHERE UserName = ? ;")
-        [uName]
-    liftIO $ Logger.info (Logger.lConfig env) $
+    u <- selectMaybeItemByField "Users" "UserName" uName
+    logConfig <- asks Logger.lConfig
+    liftIO $ Logger.info logConfig $
         "Change password for user: " <> uName
-    return $ A.toJSON $ listToMaybe (u :: [User])
+    return $ A.toJSON (u :: Maybe User)
 
