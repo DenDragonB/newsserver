@@ -44,14 +44,11 @@ authorAdd param = do
             queryAbout <- getParamM "about" param
 
             let pool = dbConn env
-            isUser <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Users WHERE id = ?);")
-                [uid :: Int]
-            unless (maybe False fromOnly $ listToMaybe isUser) (throwError UserNOTExists)
-            isAuthor <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Authors WHERE UserId = ?);")
-                [uid]
-            when (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectExists)
+            isUser <- existItemByField "Users" "Id" (uid :: Int)
+            unless isUser (throwError UserNOTExists)
+            isAuthor <- existItemByField "Authors" "UserId" (uid :: Int)
+            when isAuthor (throwError ObjectExists)
+
             _ <- execWithExcept pool
                 (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
                 (uid , queryAbout )
@@ -77,19 +74,15 @@ authorEdit param = do
     case admin of
         Just (_, True ) -> do
             aid <- parseParamM "id" param
-
             uid <- parseMaybeParam "user_id" param
             let queryAbout = getMaybeParam "about" param
+            
+            isAuthor <- existItemByField "Authors" "Id" (aid :: Int)
+            unless isAuthor (throwError ObjectNOTExists)
+            isUser <- existItemByField "Users" "Id" (uid :: Maybe Int)
+            when (isJust uid && not isUser) (throwError UserNOTExists)
 
             let pool = dbConn env
-            isAuthor <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
-                [aid :: Int]
-            unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
-            isUser <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Users WHERE Id = ?);")
-                [uid :: Maybe Int]
-            when (isJust uid && not (maybe False fromOnly $ listToMaybe isUser)) (throwError UserNOTExists)
             _ <- execWithExcept pool
                 (Query "UPDATE Authors SET "
                     <> "UserId = COALESCE (?,userid),"
@@ -144,12 +137,10 @@ authorDelete param = do
     case admin of
         Just (_, True ) -> do
             aid <- parseParamM "id" param
+            isAuthor <- existItemByField "Authors" "Id" (aid :: Int)
+            unless isAuthor (throwError ObjectNOTExists)
 
             let pool = dbConn env
-            isAuthor <- queryWithExcept pool
-                (Query "SELECT EXISTS (SELECT id FROM Authors WHERE Id = ?);")
-                [aid :: Int]
-            unless (maybe False fromOnly $ listToMaybe isAuthor) (throwError ObjectNOTExists)
             _ <- execWithExcept pool
                 (Query "DELETE FROM Authors WHERE Id = ? ;")
                 [aid]
@@ -157,3 +148,4 @@ authorDelete param = do
                 "Delete author id: " <> show aid
             return $ A.String $ "Author with id "<> (pack . show) aid <>" deleted"
         _ -> throwError NotFound
+    

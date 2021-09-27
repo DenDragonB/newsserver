@@ -5,19 +5,21 @@
 
 module DataBase where
 
-import qualified Data.Aeson                 as A
+import qualified Data.Aeson                         as A
 import           GHC.Generics
 
 import           Control.Exception
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import qualified Data.ByteString.UTF8       as BS
-import           Text.Read                  (readMaybe)
+import qualified Data.ByteString.UTF8               as BS
+import           Text.Read                          (readMaybe)
 
 import           Data.Int
 import           Data.Maybe
 import           Data.Pool
 import           Database.PostgreSQL.Simple
+import           Database.PostgreSQL.Simple.ToField (ToField)
+import           Database.PostgreSQL.Simple.Types
 
 import qualified Exceptions
 import qualified Logger
@@ -146,12 +148,12 @@ parseMaybeParamList name prms = do
         Just bspar -> case mapM readMaybe bspar of
             Nothing -> throwError $ Exceptions.ParametrParseError name
             mpar    -> return mpar
-            
+
 fromMaybeM :: (MonadError e m) => e -> Maybe a -> m a
 fromMaybeM err = maybe (throwError err) pure
 
-getParamM :: 
-    ( MonadError Exceptions.Errors m) 
+getParamM ::
+    ( MonadError Exceptions.Errors m)
     => String -> [( String , Maybe String )] -> m String
 getParamM name ps = fromMaybeM (Exceptions.WrongQueryParameter name) $ getMaybeParam name ps
 
@@ -162,7 +164,7 @@ parseParamM ::
 parseParamM name prms = do
     bspar <- getParamM name prms
     case readMaybe bspar of
-        Nothing -> throwError $ Exceptions.ParametrParseError name
+        Nothing  -> throwError $ Exceptions.ParametrParseError name
         Just par -> return par
 
 delBracketStart :: String -> String
@@ -180,3 +182,20 @@ isBracket mc = case mc of
 
 splitCommas :: String -> [String]
 splitCommas s = words $ map (\c -> if c == ',' then ' ' else c) s
+
+existItemByField ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    , ToField a
+    ) => String -> String -> a -> m Bool
+existItemByField table field value = do
+    pool <- asks dbConn
+    isExist <- queryWithExcept pool
+                (Query $ "SELECT EXISTS (SELECT id FROM "
+                    <> BS.fromString table <> " WHERE " 
+                    <> BS.fromString field <> " = ?);")
+                [value]
+    return (maybe False fromOnly $ listToMaybe isExist)
