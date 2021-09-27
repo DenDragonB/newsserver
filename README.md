@@ -52,7 +52,7 @@ for example
 
 in response, you will receive a message in JSON format  
 
-    {"result":"Ok","object":\[\{\"name\"\:\"Computer\",\"id\"\:5\}\]\}
+    {"result":"Ok","object":[{"name":"Computer","id":5}]}
 
 
 ### Posts API.
@@ -62,7 +62,8 @@ Command:
 `posts.get` - Outputs all records that match the search parameters
 
 for example:  
-    >http://localhost:8080/posts.get?token=ab12&author=Pall
+
+    http://localhost:8080/posts.get?token=ab12&author=Pall
 
 Available parameters:
 
@@ -75,17 +76,19 @@ supports search by part of the name
 supports search by part of string  
 **created_at** - optional. date when post is created  
 **created_at__lt** - optional. news created earlier than the specified date  
-**created_at__gt** - optional. news created after the specified date  
->/posts.get?created_at=2018-05-21  
->/posts.get?created_at__lt=2018-05-21  
->/posts.get?created_at__gt=2018-05-21 
+**created_at__gt** - optional. news created after the specified date
+
+    /posts.get?created_at=2018-05-21  
+    /posts.get?created_at__lt=2018-05-21  
+    /posts.get?created_at__gt=2018-05-21 
 
 **tag** - optional. tag id number  
 **tags__all** - optional. tag numbers that ALL should be present in the post  
 **tags__in** - optional. find posts that have at least one tag from the list  
->/posts.get?tag=123  
->/posts.get?tags__in=[123,124,125]  
->/posts.get?tags__all=[123,124,125]  
+
+    /posts.get?tag=123  
+    /posts.get?tags__in=[123,124,125]  
+    /posts.get?tags__all=[123,124,125]  
 
 **search** - optional. search for a string that can be found in text content, 
 header, tag name, category name or author name. case-insensitive.  
@@ -185,7 +188,8 @@ Command:
 `user.delete` - delete user from database
 
 for example:  
->http://localhost:8080/user.delene?token=aa33&id=3
+
+    http://localhost:8080/user.delene?token=aa33&id=3
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can delete users  
@@ -196,8 +200,9 @@ Command:
 `user.change_pass` - change pass for user and get new token
 
 for example:
->http://localhost:8080/user.change_pass?name=Cheburashka
-&pass=GenaTheBest&new_pass=CheburashkaBetter
+
+    http://localhost:8080/user.change_pass?name=Cheburashka
+    &pass=GenaTheBest&new_pass=CheburashkaBetter
 
 Available parameters:  
 **name** -username  
@@ -212,7 +217,8 @@ Command:
 `author.add` - add user to authors
 
 for example  
->http://localhost:8080/author.add?token=amin45&user_id=11&about=Thisisbestauthor
+
+    http://localhost:8080/author.add?token=amin45&user_id=11&about=Thisisbestauthor
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can add authors  
@@ -224,7 +230,8 @@ Command:
 `author.edit` - edit authors information
 
 for example  
->http://localhost:8080/author.edit?token=amin45&id=2&user_id=5&about=Edit_Author
+
+    http://localhost:8080/author.edit?token=amin45&id=2&user_id=5&about=Edit_Author
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can edit authors  
@@ -236,7 +243,8 @@ Command:
 `author.get` - get list of authors into database
 
 for example  
->http://localhost:8080/author.get?token=amin45&user_id=11
+
+    http://localhost:8080/author.get?token=amin45&user_id=11
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can get authors  
@@ -248,7 +256,8 @@ Command:
 `author.delete` - delete author from database
 
 for example  
->http://localhost:8080/author.delete?token=amin45&id=2
+
+    http://localhost:8080/author.delete?token=amin45&id=2
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can delete authors  
@@ -262,7 +271,8 @@ Command:
 `category.add` - add categoy to database
 
 for example  
->http://localhost:8080/category.add?token=admin&name=Computers
+
+    http://localhost:8080/category.add?token=admin&name=Computers
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can add authors  
@@ -274,7 +284,8 @@ Command:
 `category.edit` - edit an existing category
 
 for example  
->http://localhost:8080/category.edit?token=admin&id=2&parent=1
+
+    http://localhost:8080/category.edit?token=admin&id=2&parent=1
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can edit authors  
@@ -287,7 +298,8 @@ Command:
 `category.get` - get list of authors into database
 
 for example  
->http://localhost:8080/category.get?token=user&id=1
+
+    http://localhost:8080/category.get?token=user&id=1
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can get authors  
@@ -300,7 +312,8 @@ Command:
 `category.delete` - delete category from database
 
 for example  
->http://localhost:8080/category.delete?token=admin&id=2
+
+    http://localhost:8080/category.delete?token=admin&id=2
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can delete authors  
@@ -314,7 +327,8 @@ Command:
 `tag.add` - add tag to database
 
 for example  
->http://localhost:8080/tag.add?token=admin&name=Computer
+
+    http://localhost:8080/tag.add?token=admin&name=Computer
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can add tags  
@@ -325,7 +339,8 @@ Command:
 `tag.edit` - edit an existing tag
 
 for example  
->http://localhost:8080/tag.edit?token=admin&id=5&name=Computer
+
+    http://localhost:8080/tag.edit?token=admin&id=5&name=Computer
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can edit tags  
@@ -337,7 +352,8 @@ Command:
 `tag.get` - get list of tags into database
 
 for example  
->http://localhost:8080/tag.get?token=admin
+
+    http://localhost:8080/tag.get?token=admin
 
 Available parameters:  
 **token** - key token for user identification  
@@ -350,7 +366,8 @@ Command:
 `tag.delete` - delete tag from database
 
 for example  
->http://localhost:8080/tag.delete?token=admin&id=4
+
+    http://localhost:8080/tag.delete?token=admin&id=4
 
 Available parameters:  
 **token** - key token for user identification. Only administrators can delete tags  
