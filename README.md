@@ -29,10 +29,11 @@ Section **[logger]** contains logging settings
 
 Before use start server, then send request to setup tables in database:
 
-    http://\<server_web_addres\>\:\<port\>/database.migrate
+    http://<server_web_addres>:<port>/database.migrate
 
 for example:  
->http://localhost:8080/database.migrate
+
+    http://localhost:8080/database.migrate
 
 
 ## API description
@@ -43,13 +44,15 @@ When requesting data, you must specify the token as one of the request parameter
 
 To get data from the server, you must send a request like:
 
-    http://\<server_web_addres\>\:\<port\>\/\<command\>\?\<arg1\>\=\<val1\>\&\<arg2\>\=\<val2\>...
+    http://<server_web_addres>:<port>/<command>?<arg1>=<val1>&<arg2>=<val2>...
 
 for example  
+
     http://localhost:8080/tag.get?token=abc123&id=5
 
 in response, you will receive a message in JSON format  
-    \{"result":"Ok","object":\[\{\"name\"\:\"Computer\",\"id\"\:5\}\]\}
+
+    {"result":"Ok","object":\[\{\"name\"\:\"Computer\",\"id\"\:5\}\]\}
 
 
 ### Posts API.
@@ -75,13 +78,15 @@ supports search by part of string
 **created_at__gt** - optional. news created after the specified date  
 >/posts.get?created_at=2018-05-21  
 >/posts.get?created_at__lt=2018-05-21  
->/posts.get?created_at__gt=2018-05-21  
+>/posts.get?created_at__gt=2018-05-21 
+
 **tag** - optional. tag id number  
 **tags__all** - optional. tag numbers that ALL should be present in the post  
 **tags__in** - optional. find posts that have at least one tag from the list  
-    /posts.get?tag=123  
-    /posts.get?tags__in=[123,124,125]  
-    /posts.get?tags__all=[123,124,125]  
+>/posts.get?tag=123  
+>/posts.get?tags__in=[123,124,125]  
+>/posts.get?tags__all=[123,124,125]  
+
 **search** - optional. search for a string that can be found in text content, 
 header, tag name, category name or author name. case-insensitive.  
 **sort_by** - optional. sorting posts. possible values:  
@@ -103,11 +108,12 @@ Command:
 **PLEASE Remember the id to access the draft in future**
 
 for example:   
->http://localhost:8080/draft.add?token=author
-&header=Phone of 2021&category_id=5&tags_id=[1,2]
-&content=there are same info about cell phones
-&main_photo=http://localhost:8080/photos/photo.jpg
-&photos=['http://localhost:8080/photos/photo1.png','http://localhost:8080/photos/photo2.jpg']
+
+    http://localhost:8080/draft.add?token=author
+    &header=Phone of 2021&category_id=5&tags_id=[1,2]
+    &content=there are same info about cell phones
+    &main_photo=http://localhost:8080/photos/photo.jpg
+    &photos=['http://localhost:8080/photos/photo1.png','http://localhost:8080/photos/photo2.jpg']
 
 Available parameters:  
 **token** - key token for user identification. Only authors can add drafts.  
@@ -148,9 +154,10 @@ Command:
 `user.add` - register new user into database
 
 for example:  
->http://localhost:8080/user.add?last_name=Ivanov&first_name=Ivan
-&name=Cheburashka&pass=GenaTheBest
-&avatar=http://localhost:8080/photos/uhi.jpg
+
+    http://localhost:8080/user.add?last_name=Ivanov&first_name=Ivan
+    &name=Cheburashka&pass=GenaTheBest
+    &avatar=http://localhost:8080/photos/uhi.jpg
 
 Available parameters:  
 **last_name** - Last name of new user  
@@ -164,7 +171,8 @@ Command:
 `user.get` - get list of users into database
 
 for example:  
->http://localhost:8080/user.get?token=aa33&last_name=Bychkov&limit=2&page=2
+
+    http://localhost:8080/user.get?token=aa33&last_name=Bychkov&limit=2&page=2
 
 Available parameters:  
 **token** - key token for user identification  
