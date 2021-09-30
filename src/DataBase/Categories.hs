@@ -16,17 +16,11 @@ import           GHC.Generics
 
 import           DataBase
 import           DataBase.Postgres
+import           DataBase.Types
 import           DataBase.Users
 import           Exceptions
 import           Logger
-
-data Category = Category
-    { id        :: Int
-    , name      :: Text
-    , parent_id :: Int
-    } deriving (Show,Eq,Generic)
-instance A.ToJSON Category
-instance FromRow Category
+import DataBase.Postgres (Tables(Categories), Fields (CatName))
 
 categoryAdd ::
     ( MonadReader env m
@@ -46,19 +40,18 @@ categoryAdd param = do
             let par = fromMaybe 0 (mpar :: Maybe Int)
 
 
-            isCat <- existItemByField "Categories" "CatName" catName
+            isCat <- existItemByField Categories CatName catName
             when isCat (throwError ObjectExists)
-            isPar <- existItemByField "Categories" "Id" par
+            isPar <- existItemByField Categories Id par
             unless (par == 0 || isPar) (throwError ParentNOTExists)
 
-            _ <- execWithExcept
-                (Query "INSERT INTO Categories (CatName, Parent) VALUES (?,?);")
-                (catName,par)
+            cat <- insertCategoryWithPrameters catName par
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Add category name: " <> catName
-            cat <- selectMaybeItemByField "Categories" "CatName" catName
-            return $ A.toJSON (cat :: Maybe Category)
+
+            return $ A.toJSON cat
         _ -> throwError NotFound
 
 categoryEdit ::
@@ -78,24 +71,20 @@ categoryEdit param = do
             let cname = getMaybeParam "name" param
             par <- parseMaybeParam "parent_id" param
 
-            isCat <- existItemByField "Categories" "Id" (cid :: Int)
+            isCat <- existItemByField Categories Id (cid :: Int)
             unless isCat (throwError ObjectNOTExists)
-            isCatName <- existItemByField "Categories" "CatName" cname
+            isCatName <- existItemByField Categories CatName cname
             when isCatName (throwError ObjectExists)
-            isPar <- existItemByField "Categories" "Id" (par :: Maybe Int)
+            isPar <- existItemByField Categories Id (par :: Maybe Int)
             unless (isNothing par || isPar) (throwError ParentNOTExists)
 
-            _ <- execWithExcept
-                (Query "UPDATE Categories SET "
-                    <> "CatName = COALESCE (?, CatName),"
-                    <> "Parent = COALESCE (?, Parent )"
-                    <> "WHERE Id = ?;")
-                (cname,par,cid)
+            cat <- updateCategoryWithParameters cid par cname
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Edit category id: " <> show cid
-            cat <- selectMaybeItemByField "Categories" "Id" cid
-            return $ A.toJSON (cat :: Maybe Category)
+
+            return $ A.toJSON cat
         _ -> throwError NotFound
 
 categoryGet ::
@@ -113,15 +102,8 @@ categoryGet param = do
             cid <- parseMaybeParam "id" param
             let cname = getMaybeParam "name" param
             cpar <- parseMaybeParam "parent_id" param
-            cat <- queryWithExcept
-                (Query $ "SELECT id,CatName,Parent FROM Categories WHERE"
-                    <> "(id = COALESCE (?, id))"
-                    <> "AND (CatName = COALESCE (?, CatName)) "
-                    <> "AND (Parent = COALESCE (?, Parent))"
-                    <> "ORDER BY Parent,CatName,Id "
-                    <> getLimitOffsetBS param <> ";")
-                (cid :: Maybe Int, cname, cpar :: Maybe Int)
-            return $ A.toJSON (cat :: [Category])
+            cat <- getCategoryWithParameters cid cpar cname param
+            return $ A.toJSON cat
         _ -> throwError NotFound
 
 categoryDelete ::
@@ -137,14 +119,13 @@ categoryDelete param = do
     case admin of
         Just (_, True ) -> do
             cid <- parseParamM "id" param
-            isCat <- existItemByField "Categories" "Id" (cid :: Int)
+            isCat <- existItemByField Categories Id (cid :: Int)
             unless isCat (throwError ObjectNOTExists)
-            isHaveSub <- existItemByField "Categories" "Parent" cid
+            isHaveSub <- existItemByField Categories Id cid
             when isHaveSub (throwError CategoryWithSub)
 
-            _ <- execWithExcept
-                (Query "DELETE FROM Categories WHERE Id = ?;")
-                [cid]
+            deleteItemFromTableById Categories cid
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Delete category id: " <> show cid

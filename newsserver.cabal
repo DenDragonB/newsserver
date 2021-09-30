@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fab0155f1b8cc7b4a7349e275aa673d3613b661de187cd6a655a88540e44dc16
+-- hash: 9c7ba89c4cd3199f36b6a058755b37cf7167b416ba759434403c9829af834eee
 
 name:           newsserver
 version:        0.1.0.0
@@ -36,6 +36,7 @@ library
       DataBase.Postgres
       DataBase.Posts
       DataBase.Tags
+      DataBase.Types
       DataBase.Users
       Exceptions
       Logger

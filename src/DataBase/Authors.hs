@@ -1,32 +1,23 @@
-{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module DataBase.Authors where
 
-import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.Types
 
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import qualified Data.Aeson                         as A
-import           Data.Maybe                         (isJust)
-import           Data.Text                          (Text, pack)
+import qualified Data.Aeson                       as A
+import           Data.Maybe                       (isJust)
+import           Data.Text                        (Text, pack)
 import           GHC.Generics
 
 import           DataBase
 import           DataBase.Postgres
+import           DataBase.Types                   (Author)
 import           DataBase.Users
 import           Exceptions
 import           Logger
-
-data Author = Author
-    { id      :: Int
-    , user_id :: Int
-    , about   :: Text
-    } deriving (Show,Eq,Generic)
-instance A.ToJSON Author
-instance FromRow Author
 
 authorAdd ::
     ( MonadReader env m
@@ -43,19 +34,18 @@ authorAdd param = do
             uid <- parseParamM "user_id" param
             queryAbout <- getParamM "about" param
 
-            isUser <- existItemByField "Users" "Id" (uid :: Int)
+            isUser <- existItemByField Users Id (uid :: Int)
             unless isUser (throwError UserNOTExists)
-            isAuthor <- existItemByField "Authors" "UserId" (uid :: Int)
+            isAuthor <- existItemByField Authors UserId (uid :: Int)
             when isAuthor (throwError ObjectExists)
 
-            _ <- execWithExcept
-                (Query "INSERT INTO Authors (UserId, About) VALUES (?,?);")
-                (uid , queryAbout )
+            author <- insertAuthorWithPrameters uid queryAbout
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Add author with user id: " <> show uid
-            author <- selectMaybeItemByField "Authors" "UserId" uid
-            return $ A.toJSON (author :: Maybe Author)
+
+            return $ A.toJSON author
         _ -> throwError NotFound
 
 authorEdit ::
@@ -74,22 +64,18 @@ authorEdit param = do
             uid <- parseMaybeParam "user_id" param
             let queryAbout = getMaybeParam "about" param
 
-            isAuthor <- existItemByField "Authors" "Id" (aid :: Int)
+            isAuthor <- existItemByField Authors Id aid
             unless isAuthor (throwError ObjectNOTExists)
-            isUser <- existItemByField "Users" "Id" (uid :: Maybe Int)
+            isUser <- existItemByField Users Id uid
             when (isJust uid && not isUser) (throwError UserNOTExists)
 
-            _ <- execWithExcept
-                (Query "UPDATE Authors SET "
-                    <> "UserId = COALESCE (?,userid),"
-                    <> "About = COALESCE (?,about)"
-                    <> "WHERE Id = ?;")
-                (uid,queryAbout,aid)
+            author <- updateAuthorWithParameters aid uid queryAbout
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Edit author id: " <> show aid
-            author <- selectMaybeItemByField "Authors" "Id" aid
-            return $ A.toJSON (author :: Maybe Author)
+
+            return $ A.toJSON author
         _ -> throwError NotFound
 
 authorGet ::
@@ -106,13 +92,7 @@ authorGet param = do
         Just (_, True ) -> do
             uid <- parseMaybeParam "user_id" param
             aid <- parseMaybeParam "id" param
-            author <- queryWithExcept
-                (Query $ "SELECT id,userid,about FROM authors WHERE"
-                    <> "(id = COALESCE (?, id))"
-                    <> "AND (userid = COALESCE (?, userid))"
-                    <> "ORDER BY id "
-                    <> getLimitOffsetBS param <> ";")
-                (aid :: Maybe Int, uid :: Maybe Int)
+            author <- getAuthorWithParameters aid uid param
             return $ A.toJSON (author :: [Author])
         _ -> throwError NotFound
 
@@ -129,12 +109,11 @@ authorDelete param = do
     case admin of
         Just (_, True ) -> do
             aid <- parseParamM "id" param
-            isAuthor <- existItemByField "Authors" "Id" (aid :: Int)
+            isAuthor <- existItemByField Authors Id aid
             unless isAuthor (throwError ObjectNOTExists)
 
-            _ <- execWithExcept
-                (Query "DELETE FROM Authors WHERE Id = ? ;")
-                [aid]
+            deleteItemFromTableById Authors aid
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Delete author id: " <> show aid

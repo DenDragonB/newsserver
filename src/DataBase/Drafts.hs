@@ -22,23 +22,11 @@ import           Data.Time
 import           Data.Function
 import           DataBase
 import           DataBase.Postgres
+import           DataBase.Types                     (Draft (..))
 import           Exceptions
 import           Logger
 import           Prelude                            hiding (id)
-
-data Draft = Draft
-    { dbid          :: Int
-    , dbpost_id     :: Int
-    , dbheader      :: Text
-    , dbreg_date    :: Day
-    , dbautor_id    :: Int
-    , dbcategory_id :: Int
-    , dbtags_id     :: PGArray Int
-    , dbcontent     :: Text
-    , dbmain_photo  :: Text
-    , dbphotos      :: PGArray Text
-    } deriving (Show,Eq,Generic)
-instance FromRow Draft
+import Control.Monad.Trans.Select (select)
 
 data DraftJSON = DraftJSON
     { id          :: Int
@@ -79,25 +67,19 @@ draftAdd param = do
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    authors <- queryWithExcept
-        (Query "SELECT id FROM Authors WHERE UserId = "
-            <> "(SELECT Id FROM Users WHERE Token = ? );")
-        [token]
-    case (authors :: [Only Int]) of
-        [author] -> do
+    mauthor <- selectAuthorIdByToken token
+    case mauthor of
+        Just author -> do
             queryHeader <- getParamM "header" param
 
             cat <- parseParamM "category_id" param
-            isCat <- existItemByField "Categories" "Id" (cat :: Int)
+            isCat <- existItemByField Categories Id (cat :: Int)
             unless isCat (throwError $ WrongQueryParameter "category_id")
 
             mtags <- parseMaybeParamList "tags_id" param
             let tags = fromMaybe [] (mtags :: Maybe [Int])
-            bdtags <- queryWithExcept
-                (Query "SELECT id FROM Tags WHERE"
-                    <> "(array_position (?,id) IS NOT NULL)")
-                [PGArray tags]
-            unless (length tags==length (bdtags :: [Only Int]))
+            bdtags <- selectTagsByIds tags
+            unless (length tags==length bdtags)
                 (throwError (WrongQueryParameter "tags_id"))
 
             let mcont = getMaybeParam "content" param
@@ -107,39 +89,18 @@ draftAdd param = do
             let cont = fromMaybe "" mcont
             let mph = fromMaybe "" mmph
             let phs = fromMaybe [] mphs
-            dids <- queryWithExcept
-                (Query "INSERT INTO Drafts "
-                    <> "(Header,RegDate,News,Author,Category,Content,MainPhoto,Photos)"
-                    <> " VALUES ( ?,NOW(),0,?,?,?,?, ?) RETURNING Id;")
-                (queryHeader, fromOnly author,cat,cont,mph, PGArray phs)
-            let newid = listToMaybe $ fromOnly <$> (dids :: [Only Int])
+            
+            newid <- insertDraftWithPrameters queryHeader author cat cont mph phs
+            when (isNothing newid) (throwError Exceptions.PostgreError)
+
+            updateDraftToTags newid tags
+
             logConfig <- asks Logger.lConfig
-            if null tags
-                then do
-                    _ <- execWithExcept
-                        (Query "Delete from draftstotags where draftid=?;")
-                        [newid]
-                    liftIO $ Logger.info logConfig $
+            liftIO $ Logger.info logConfig $
                         "Add Draft: " <> queryHeader
-                else do
-                    _ <- execWithExcept
-                        (Query "Delete from draftstotags where draftid=?;"
-                        <> "Insert into draftstotags (draftid,tagid) "
-                        <> "(SELECT ?,UNNEST (?)) ON CONFLICT DO NOTHING;")
-                        ( newid
-                        , newid
-                        , PGArray tags)
-                    liftIO $ Logger.info logConfig $
-                        "Add Draft: " <> queryHeader
-            draft <- queryWithExcept
-                (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,"
-                    <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
-                    <> "FROM Drafts d "
-                    <> "LEFT OUTER JOIN draftstotags t ON t.draftid=d.id "
-                    <> "WHERE d.Id = ? "
-                    <> "GROUP BY d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,d.Content,d.MainPhoto,d.Photos")
-                $ fromOnly <$> dids
-            return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
+
+            draft <- selectDraftById newid
+            return $ A.toJSON $ draftToJSON <$> draft
         _ -> throwError AuthorNOTExists
 
 draftEdit ::
@@ -154,81 +115,38 @@ draftEdit param = do
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    authors <- queryWithExcept
-        (Query "SELECT id FROM Authors WHERE UserId = "
-            <> "(SELECT Id FROM Users WHERE Token = ?);")
-        [token]
-    when (null authors) (throwError AuthorNOTExists)
-    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    author <- selectAuthorIdByToken token
+    when (isNothing author) (throwError AuthorNOTExists)
 
     did <- parseParamM "id" param
-    isDraft <- queryWithExcept
-        (Query "SELECT EXISTS (SELECT id FROM Drafts WHERE Id = ? AND Author = ?);")
-        (did :: Int,author)
-    unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
-
-    let queryHeader = getMaybeParam "header" param
+    isDraft <- existDraftByIdAndAuthor did author
+    unless isDraft (throwError ObjectNOTExists)
 
     cat <- parseMaybeParam "category_id" param
-    isCat <- existItemByField "Categories" "Id" (cat :: Maybe Int)
+    isCat <- existItemByField Categories Id (cat :: Maybe Int)
     unless (isNothing cat || isCat) (throwError $ WrongQueryParameter "category_id")
 
     mtags <- parseMaybeParamList "tags_id" param
     let tags = fromMaybe [] (mtags :: Maybe [Int])
-    bdtags <- queryWithExcept
-        (Query "SELECT id FROM Tags WHERE"
-            <> "(array_position (?,id) IS NOT NULL)")
-        [PGArray tags]
-    unless (length tags==length (bdtags :: [Only Int]))
-                (throwError (WrongQueryParameter "tags_id"))
+    bdtags <- selectTagsByIds tags
+    unless (length tags==length bdtags)
+        (throwError (WrongQueryParameter "tags_id"))
+
+    let queryHeader = getMaybeParam "header" param
     let cont = getMaybeParam "content" param
     let mph = getMaybeParam "main_photo" param
     let phs = getMaybeParamList "photos" param
 
-    _ <- execWithExcept
-        (Query "UPDATE Drafts SET "
-            <> "Header = COALESCE (?, Header ),"
-            <> "Category = COALESCE (?, Category ),"
-            <> "Content = COALESCE (?, Content ),"
-            <> "MainPhoto = COALESCE (?, MainPhoto ),"
-            <> "Photos = COALESCE (?, Photos )"
-            <> "WHERE Id = ? ;")
-        ( queryHeader
-        , cat
-        , cont
-        , mph
-        , PGArray <$> phs
-        , did)
+    updateDraftWithPrameters did queryHeader cat cont mph phs
+
+    unless (isNothing mtags) $ updateDraftToTags (Just did) tags
+    
     logConfig <- asks Logger.lConfig
-    case mtags of
-        Nothing -> do
-            liftIO $ Logger.info logConfig $
+    liftIO $ Logger.info logConfig $
                 "Edit Draft id: " <> show did
-        Just [] -> do
-            _ <- execWithExcept
-                (Query "Delete from draftstotags where draftid=?;")
-                [ did ]
-            liftIO $ Logger.info logConfig $
-                "Edit Draft id: " <> show did
-        _ -> do
-            _ <- execWithExcept
-                (Query "Delete from draftstotags where draftid=?;"
-                    <> "Insert into draftstotags (draftid,tagid) "
-                    <> "(SELECT ?,UNNEST (?)) ON CONFLICT DO NOTHING;")
-                ( did
-                , did
-                , PGArray tags)
-            liftIO $ Logger.info logConfig $
-                "Edit Draft id: " <> show did
-    draft <- queryWithExcept
-        (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
-            <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
-            <> "FROM Drafts d "
-            <> "LEFT OUTER JOIN draftstotags t ON t.draftid=d.id "
-            <> "WHERE d.Id = ? "
-            <> "GROUP BY d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,d.Content,d.MainPhoto,d.Photos")
-        [did]
-    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
+
+    draft <- selectDraftById (Just did)
+    return $ A.toJSON $ draftToJSON <$> draft
 
 draftGet ::
     ( MonadReader env m
@@ -242,26 +160,17 @@ draftGet param = do
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    authors <- queryWithExcept
-        (Query "SELECT id FROM Authors WHERE UserId = "
-            <> "(SELECT Id FROM Users WHERE Token = ?);")
-        [token]
-    when (null authors) (throwError AuthorNOTExists)
-    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    author <- selectAuthorIdByToken token
+    when (isNothing author) (throwError AuthorNOTExists)
 
     did <- parseParamM "id" param
-    draft <- queryWithExcept
-        (Query $ "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
-            <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
-            <> "FROM Drafts d "
-            <> "LEFT OUTER JOIN draftstotags t ON t.draftid=d.id "
-            <> "WHERE d.Id = ? AND d.Author = ? "
-            <> "GROUP BY d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,d.Content,d.MainPhoto,d.Photos "
-            <> "ORDER BY RegDate "
-            <> getLimitOffsetBS param <> ";")
-        (did :: Int,author)
-    when (null draft) (throwError ObjectNOTExists)
-    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (draft :: [Draft])
+
+    draft <- selectDraftById did
+    when (isNothing draft) (throwError ObjectNOTExists)
+
+    if (dbautor_id <$> draft) == author
+        then return $ A.toJSON $ draftToJSON <$> draft
+        else throwError ObjectNOTExists
 
 draftDelete ::
     ( MonadReader env m
