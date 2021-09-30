@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bb7485075c9185ac83399e305abcaa7d2d60494dcf709bab8438582cee4228c7
+-- hash: fab0155f1b8cc7b4a7349e275aa673d3613b661de187cd6a655a88540e44dc16
 
 name:           newsserver
 version:        0.1.0.0
@@ -51,6 +51,7 @@ library
     , bytestring
     , bytestring-conversion
     , directory
+    , hspec
     , htoml
     , http-types
     , mtl
@@ -78,6 +79,7 @@ executable newsserver-exe
     , bytestring
     , bytestring-conversion
     , directory
+    , hspec
     , htoml
     , http-types
     , mtl
@@ -96,6 +98,10 @@ test-suite newsserver-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      TestDataBase
+      TestExceptions
+      TestLogger
+      TestWeb
       Paths_newsserver
   hs-source-dirs:
       test
@@ -107,6 +113,7 @@ test-suite newsserver-test
     , bytestring
     , bytestring-conversion
     , directory
+    , hspec
     , htoml
     , http-types
     , mtl

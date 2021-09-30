@@ -8,7 +8,6 @@ import           Control.Monad.Reader
 import qualified Data.ByteString.UTF8                 as BS
 import           Data.Maybe                           (listToMaybe)
 import           Database.PostgreSQL.Simple
-import           Database.PostgreSQL.Simple.FromField (FromField)
 import           Database.PostgreSQL.Simple.ToField   (ToField)
 import           Database.PostgreSQL.Simple.Types
 import           Exceptions

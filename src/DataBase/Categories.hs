@@ -10,8 +10,7 @@ import           Database.PostgreSQL.Simple.Types
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import qualified Data.Aeson                         as A
-import           Data.Maybe                         (fromMaybe, isNothing,
-                                                     listToMaybe)
+import           Data.Maybe                         (fromMaybe, isNothing)
 import           Data.Text                          (Text, pack)
 import           GHC.Generics
 

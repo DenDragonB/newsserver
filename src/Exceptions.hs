@@ -30,7 +30,7 @@ data Errors
 
 -- for snding files
     | Send String
-    deriving (Typeable)
+    deriving (Typeable,Eq)
 instance Exception Errors
 instance Show Errors where
     show UnknownRequest           = "Unknown Request"

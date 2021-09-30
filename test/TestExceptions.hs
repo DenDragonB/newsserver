@@ -1,9 +1,9 @@
 module TestExceptions where
 
-import Test.Hspec
 import           Network.HTTP.Types
+import           Test.Hspec
 
-import Exceptions
+import           Exceptions
 
 main :: IO ()
 main = hspec $ do

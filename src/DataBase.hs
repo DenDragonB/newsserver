@@ -43,6 +43,13 @@ class Monad m => MyDatabase m where
     queryDBsafe :: (ToRow q, FromRow r) => DBPool -> Query -> q -> m [r]
     execDBsafe :: ToRow q => DBPool -> Query -> q -> m Int64
 
+instance MyDatabase Maybe where
+    openPool _ = Nothing
+    queryDB _ _ = return []
+    execDB _ _ = return 0
+    queryDBsafe _ _ _ = return []
+    execDBsafe _ _ _ = return 0
+
 instance MyDatabase IO where
     openPool Config {..} = do
         let cInfo = ConnectInfo
@@ -181,4 +188,9 @@ isBracket mc = case mc of
     _      -> False
 
 splitCommas :: String -> [String]
-splitCommas s = words $ map (\c -> if c == ',' then ' ' else c) s
+splitCommas s = if ',' `notElem` s then [s]
+    else x : splitCommas (drop 1 xs) where
+        (x,xs) = break (==',') s
+
+
+

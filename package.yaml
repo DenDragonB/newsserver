@@ -37,6 +37,7 @@ dependencies:
 - wai
 - warp
 - http-types
+- hspec
 
 library:
   source-dirs: src
