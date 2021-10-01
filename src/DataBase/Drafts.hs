@@ -165,7 +165,7 @@ draftGet param = do
 
     did <- parseParamM "id" param
 
-    draft <- selectDraftById did
+    draft <- selectDraftById (Just did)
     when (isNothing draft) (throwError ObjectNOTExists)
 
     if (dbautor_id <$> draft) == author
@@ -184,24 +184,21 @@ draftDelete param = do
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    authors <- queryWithExcept
-        (Query "SELECT id FROM Authors WHERE UserId = "
-            <> "(SELECT Id FROM Users WHERE Token = ?);")
-        [token]
-    when (null authors) (throwError AuthorNOTExists)
-    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
+    author <- selectAuthorIdByToken token
+    when (isNothing author) (throwError AuthorNOTExists)
+    
     did <- parseParamM "id" param
-    isDraft <- queryWithExcept
-        (Query "SELECT EXISTS (SELECT Id FROM Drafts WHERE Id = ? AND Author = ? );")
-        (did :: Int,author)
-    unless (maybe False fromOnly $ listToMaybe isDraft) (throwError ObjectNOTExists)
-    _ <- execWithExcept
-        (Query "DELETE FROM Drafts WHERE Id = ? AND Author = ? ;")
-        (did,author)
-    logConfig <- asks Logger.lConfig
-    liftIO $ Logger.info logConfig $
-        "Delete Draft id: " <> show did
-    return $ A.String $ pack $ "Draft with id " <> show did <> " deleted"
+    draft <- selectDraftById (Just did)
+    when (isNothing draft) (throwError ObjectNOTExists)
+
+    if (dbautor_id <$> draft) /= author
+        then throwError ObjectNOTExists
+        else do
+            deleteItemFromTableById Drafts did
+            logConfig <- asks Logger.lConfig
+            liftIO $ Logger.info logConfig $
+                "Delete Draft id: " <> show did
+            return $ A.String $ pack $ "Draft with id " <> show did <> " deleted"
 
 draftPublish ::
     ( MonadReader env m
@@ -215,63 +212,26 @@ draftPublish param = do
     let mtoken = getMaybeParam "token" param
     token <- mtoken & fromMaybeM NotFound
 
-    authors <- queryWithExcept
-        (Query "SELECT id FROM Authors WHERE UserId = "
-            <> "(SELECT Id FROM Users WHERE Token = ?);")
-        [token]
-    when (null authors) (throwError AuthorNOTExists)
-    let author = fromMaybe 0 $ listToMaybe $ fromOnly <$> (authors :: [Only Int])
-    did <- parseParamM "id" param
-    drafts <- queryWithExcept
-        (Query $ "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
-            <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
-            <> "FROM Drafts d "
-            <> "LEFT OUTER JOIN draftstotags t ON t.draftid=d.id "
-            <> "WHERE d.Id = ? AND d.Author = ? "
-            <> "GROUP BY d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,d.Content,d.MainPhoto,d.Photos ")
-        (did :: Int,author)
-    when (null drafts) (throwError ObjectNOTExists)
+    author <- selectAuthorIdByToken token
+    when (isNothing author) (throwError AuthorNOTExists)
 
-    let draft = listToMaybe (drafts :: [Draft])
-    news <- queryWithExcept
-        (Query "SELECT Id FROM News WHERE Id = ? ;")
-        [dbpost_id <$> draft]
+    did <- parseParamM "id" param
+    mdraft <- selectDraftById (Just did)
+    draft <- mdraft & fromMaybeM ObjectNOTExists
+
+    maybeNewsId <- existItemByField News Id (dbpost_id draft)
+    if maybeNewsId
+       then updateNewsFromDraft (Just $ dbpost_id draft) did
+       else do
+            newsId <- insertNewsByDraftId did
+            when (isNothing newsId) (throwError PostgreError)
+            insertNewsToTagsUpdateDraft newsId did
+
+    mnewdraft <- selectDraftById (Just did)
+    newdraft <- mnewdraft & fromMaybeM PostgreError
+    
     logConfig <- asks Logger.lConfig
-    if null news
-        then do
-            nids <- queryWithExcept
-                (Query "INSERT INTO News "
-                    <> "(Header,RegDate,Author,Category,Content,MainPhoto,Photos)"
-                    <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
-                    <> "FROM Drafts WHERE Id = ? ) RETURNING Id;")
-                [did]
-            let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (nids :: [Only Int])
-            _ <- execWithExcept
-                (Query "INSERT INTO newstotags (newsid,tagid) "
-                    <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;"
-                    <> "UPDATE Drafts SET News = ? WHERE Id = ? ;")
-                (nid,did,nid,did)
-            liftIO $ Logger.info logConfig $
-                "Publish News id: " <> show nid
-        else do
-            let nid = fromMaybe 0 $ listToMaybe $ fromOnly <$> (news :: [Only Int])
-            _ <- execWithExcept
-                (Query "UPDATE News SET "
-                    <> "(Header,RegDate,Author,Category,Content,MainPhoto,Photos) = "
-                    <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
-                    <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;"
-                    <> "DELETE FROM newstotags WHERE newsid=?;"
-                    <> "INSERT INTO newstotags (newsid,tagid) "
-                    <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;" )
-                (did,nid,nid,nid,did)
-            liftIO $ Logger.info logConfig $
-                "Publish News id: " <> show nid
-    newdraft <- queryWithExcept
-        (Query "SELECT d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category, "
-            <> "array_remove(array_agg(t.tagid),NULL),d.Content,d.MainPhoto,d.Photos "
-            <> "FROM Drafts d "
-            <> "LEFT OUTER JOIN draftstotags t ON t.draftid=d.id "
-            <> "WHERE d.Id = ? "
-            <> "GROUP BY d.Id,d.News,d.Header,d.RegDate,d.Author,d.Category,d.Content,d.MainPhoto,d.Photos")
-        [did]
-    return $ A.toJSON $ listToMaybe $ draftToJSON <$> (newdraft :: [Draft])
+    liftIO $ Logger.info logConfig $
+        "Publish News id: " <> show (dbpost_id newdraft)
+
+    return $ A.toJSON $ draftToJSON newdraft

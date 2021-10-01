@@ -16,16 +16,10 @@ import           GHC.Generics
 
 import           DataBase
 import           DataBase.Postgres
+import           DataBase.Types
 import           DataBase.Users
 import           Exceptions
 import           Logger
-
-data Tag = Tag
-    { id   :: Int
-    , name :: Text
-    } deriving (Show,Eq,Generic)
-instance A.ToJSON Tag
-instance FromRow Tag
 
 tagAdd ::
     ( MonadReader env m
@@ -40,17 +34,14 @@ tagAdd param = do
     case admin of
         Just (_, True ) -> do
             tagname <- getParamM "name" param
-            isTag <- existItemByField "Tags" "Tag" tagname
+            isTag <- existItemByField Tags Tag tagname
             when isTag (throwError ObjectExists)
 
-            _ <- execWithExcept
-                (Query "INSERT INTO Tags (Tag) VALUES (?);")
-                [tagname]
+            tag <- insertTagWitnName tagname
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Add Tag: " <> tagname
-            tag <- selectMaybeItemByField "Tags" "Tag" tagname
-            return $ A.toJSON (tag :: Maybe Tag)
+            return $ A.toJSON tag
         _ -> throwError NotFound
 
 tagEdit ::
@@ -65,25 +56,20 @@ tagEdit param = do
     admin <- findToken param
     case admin of
         Just (_, True ) -> do
-            tid <- parseMaybeParam "id" param
-            when (isNothing tid) $ throwError $ WrongQueryParameter "id"
+            tid <- parseParamM "id" param
+            tname <- getParamM "name" param
 
-            let tname = getMaybeParam "name" param
-            when (isNothing tname) $ throwError $ WrongQueryParameter "name"
-
-            isTag <- existItemByField "Tags" "Id" (tid :: Maybe Int)
+            isTag <- existItemByField Tags Id tid
             unless isTag (throwError ObjectNOTExists)
-            isTagName <- existItemByField "Tags" "Tag" tname
+            isTagName <- existItemByField Tags Tag tname
             when isTagName (throwError ObjectExists)
 
-            _ <- execWithExcept
-                (Query "UPDATE Tags SET Tag = ? WHERE Id = ? ;")
-                (tname , tid)
+            tag <- updateTagById tid tname
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Edit Tag id: " <> show tid
-            tag <- selectMaybeItemByField "Tags" "Id" tid
-            return $ A.toJSON (tag :: Maybe Tag)
+            return $ A.toJSON tag
         _ -> throwError NotFound
 
 tagGet ::
@@ -100,14 +86,8 @@ tagGet param = do
         Just (True , _ ) -> do
             tid <- parseMaybeParam "id" param
             let tname = getMaybeParam "name" param
-            tag <- queryWithExcept
-                (Query $ "SELECT id,tag FROM Tags WHERE"
-                    <> "(id = COALESCE (?, id))"
-                    <> "AND (tag = COALESCE (?, tag))"
-                    <> "ORDER BY tag "
-                    <> getLimitOffsetBS param <> ";")
-                (tid :: Maybe Int, tname)
-            return $ A.toJSON (tag :: [Tag])
+            tag <- selectTagsWithParameters tid tname param
+            return $ A.toJSON tag
         _ -> throwError NotFound
 
 tagDelete ::
@@ -124,12 +104,11 @@ tagDelete param = do
         Just (_, True ) -> do
             tid <- parseParamM "id" param
 
-            isTag <- existItemByField "Tags" "Id" (tid :: Maybe Int)
+            isTag <- existItemByField Tags Id tid
             unless isTag (throwError ObjectNOTExists)
 
-            _ <- execWithExcept
-                (Query "DELETE FROM Tags WHERE Id = ? ;")
-                [tid]
+            deleteItemFromTableById Tags tid
+
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Delete Tag id: " <> show tid

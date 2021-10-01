@@ -18,9 +18,9 @@ instance A.ToJSON Author
 instance FromRow Author
 
 data Category = Category
-    { category_id :: Int
-    , name        :: Text
-    , parent_id   :: Int
+    { category_id   :: Int
+    , category_name :: Text
+    , parent_id     :: Int
     } deriving (Show,Eq,Generic)
 instance A.ToJSON Category
 instance FromRow Category
@@ -38,3 +38,23 @@ data Draft = Draft
     , dbphotos      :: PGArray Text
     } deriving (Show,Eq,Generic)
 instance FromRow Draft
+
+data Posts = Posts
+    { news_id         :: Int
+    , news_header     :: Text
+    , news_reg_date   :: Day
+    , news_author     :: Text
+    , news_category   :: Text
+    , news_tags       :: PGArray Text
+    , news_content    :: Text
+    , news_main_photo :: Text
+    , news_photos     :: PGArray Text
+    } deriving (Show,Eq,Generic)
+instance FromRow Posts
+
+data TagType = TagType
+    { tag_id   :: Int
+    , tag_name :: Text
+    } deriving (Show,Eq,Generic)
+instance A.ToJSON TagType
+instance FromRow TagType

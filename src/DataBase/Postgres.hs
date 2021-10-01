@@ -16,12 +16,14 @@ import           DataBase
 import DataBase.Types
 import           Logger
 
+import Data.Time ( Day )
+
 -- Names of tables in database
-data Tables = Authors | Categories | Drafts | Posts | Tags | UserNOTExists
+data Tables = Authors | Categories | Drafts | News | Tags | Users
     deriving Show
 
 -- Names of columns in all tables of database
-data Fields = Id | UserId | About | CatName
+data Fields = Id | UserId | About | CatName | Tag
     deriving Show
 
 type ItemId = Int
@@ -281,3 +283,164 @@ updateDraftWithPrameters draftId header categoryId content mainPhoto photos = do
         , mainPhoto
         , PGArray <$> photos
         , draftId)
+
+insertNewsByDraftId::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => ItemId -> m (Maybe ItemId)
+insertNewsByDraftId draftId = do
+    items <- queryWithExcept
+        (Query "INSERT INTO News "
+            <> "(Header,RegDate,Author,Category,Content,MainPhoto,Photos)"
+            <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
+            <> "FROM Drafts WHERE Id = ? ) RETURNING Id;")
+        [draftId]
+    return $ fromOnly <$> listToMaybe items
+
+insertNewsToTagsUpdateDraft ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => Maybe ItemId -> ItemId -> m ()
+insertNewsToTagsUpdateDraft newsId draftId = do
+    void $ execWithExcept
+        (Query "INSERT INTO newstotags (newsid,tagid) "
+            <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;"
+            <> "UPDATE Drafts SET News = ? WHERE Id = ? ;")
+        (newsId,draftId,newsId,draftId)
+
+updateNewsFromDraft ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => Maybe ItemId -> ItemId -> m ()
+updateNewsFromDraft newsId draftId = do
+    void $ execWithExcept
+        (Query "UPDATE News SET "
+            <> "(Header,RegDate,Author,Category,Content,MainPhoto,Photos) = "
+            <> "(SELECT Header,RegDate,Author,Category,Content,MainPhoto,Photos "
+            <> "FROM Drafts WHERE Id = ?) WHERE Id = ? ;"
+            <> "DELETE FROM newstotags WHERE newsid=?;"
+            <> "INSERT INTO newstotags (newsid,tagid) "
+            <> "SELECT ?,tagid FROM draftstotags WHERE draftid=?;" )
+        (draftId,newsId,newsId,newsId,draftId)
+
+selectNewsWithParameters::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => Maybe ItemId -> Maybe Day -> Maybe Day -> Maybe Day -> Maybe String 
+    -> Maybe Int -> Maybe [Int] -> Maybe [Int] -> Maybe String -> Maybe String
+    -> Maybe String -> BS.ByteString -> BS.ByteString
+    -> m [Posts]
+selectNewsWithParameters newsId newsDay newsDayLT newsDayGT newsAuthor
+    newsTag newsTagALL newsTagIn newsHeader newsContent newsSearch 
+    sortBy limitOffset = do
+    queryWithExcept
+        (Query $ "WITH filters AS (SELECT"
+            <> " ?::INT AS news_id,"
+            <> " ?::DATE AS ndate,"
+            <> " ?::DATE AS ndate_LT,"
+            <> " ?::DATE AS ndate_GT,"
+            <> " ? AS nauthor,"
+            <> " ?::INT AS ntag,"
+            <> " ?::INT[] AS ntag_ALL,"
+            <> " ?::INT[] AS ntag_IN,"
+            <> " ? AS nheader,"
+            <> " ? AS ncontent,"
+            <> " lower(?) AS substring)"
+            <> "SELECT n.Id, n.Header, n.RegDate, u.UserName, c.CatName, array_agg(t.tag) as tags, "
+            <> "n.Content, n.MainPhoto, n.Photos "
+            <> "FROM filters, News n"
+            -- Add Name of Author
+            <> " LEFT OUTER JOIN (Authors a JOIN Users u on a.userid = u.id)"
+            <> " ON n.Author = a.id "
+            -- Add name of Category
+            <> " LEFT OUTER JOIN Categories c ON n.Category = c.id "
+            -- Add names of Tags
+            <> "LEFT OUTER JOIN newstotags nt ON nt.newsid=n.id "
+            <> "LEFT JOIN Tags t ON t.id = nt.tagid "
+            <> "WHERE "
+            -- Add selection
+            <> "(filters.news_id IS NULL OR n.id = filters.news_id) "
+            <> "AND (filters.ndate IS NULL OR n.RegDate = filters.ndate) "
+            <> "AND (filters.ndate_LT IS NULL OR n.RegDate < filters.ndate_LT) "
+            <> "AND (filters.ndate_GT IS NULL OR n.RegDate > filters.ndate_GT) "
+            <> "AND (filters.nauthor IS NULL OR strpos(u.UserName,filters.nauthor)>0) "
+            <> "AND (filters.ntag IS NULL OR filters.ntag IN (SELECT tagid FROM newstotags WHERE newsid =n.Id)) "
+            <> "AND (filters.ntag_ALL IS NULL OR "
+            <> "     filters.ntag_ALL <@ (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id)) "
+            <> "AND (filters.ntag_IN IS NULL OR "
+            <> "     filters.ntag_IN && (SELECT array_agg(tagid) FROM newstotags WHERE newsid=n.Id)) "
+            <> "AND (filters.nheader IS NULL OR strpos(n.Header,filters.nheader) > 0) "
+            <> "AND (filters.ncontent IS NULL OR strpos(n.Content,filters.ncontent) > 0) "
+            -- Add search
+            <> "AND (filters.substring IS NULL OR "
+            <> "     strpos (lower(n.Content),filters.substring) > 0 OR "
+            <> "     strpos (lower(n.Header),filters.substring) > 0 OR "
+            <> "     strpos (lower(u.UserName),filters.substring) > 0 OR "
+            <> "     strpos (lower(t.tag),filters.substring) > 0 OR "
+            <> "     strpos (lower(c.CatName),filters.substring) > 0) "
+            -- group elements to correct work array_agg(tag)
+            <> "GROUP BY n.Id, n.Header, n.RegDate, u.UserName, c.CatName, "
+            <> "n.Content, n.MainPhoto, n.Photos "
+            -- Add sorting
+            <> sortBy
+            -- Add pagination
+            <> limitOffset
+            <> ";")
+        ( newsId, newsDay, newsDayLT, newsDayGT, newsAuthor
+        , newsTag, PGArray <$> newsTagALL, PGArray <$> newsTagIn
+        , newsHeader, newsContent, newsSearch)
+
+insertTagWitnName ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => String -> m (Maybe TagType)
+insertTagWitnName name = do
+    items <- queryWithExcept
+        "INSERT INTO Tags (Tag) VALUES (?) RETURNING * ;"
+        [name]
+    return $ listToMaybe items     
+
+updateTagById ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => ItemId -> String -> m (Maybe TagType)
+updateTagById tagId name = do
+    items <- queryWithExcept
+        "UPDATE Tags SET Tag = ? WHERE Id = ? RETURNING * ;"
+        (name , tagId)
+    return $ listToMaybe items    
+
+selectTagsWithParameters ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => Maybe ItemId -> Maybe String -> [( String , Maybe String )] -> m (Maybe TagType)
+selectTagsWithParameters tagId name param = do
+    items <- queryWithExcept
+        (Query $ "SELECT id,tag FROM Tags WHERE"
+            <> "(id = COALESCE (?, id))"
+            <> "AND (tag = COALESCE (?, tag))"
+            <> "ORDER BY tag "
+            <> getLimitOffsetBS param <> ";")
+        (tagId, name)
+    return $ listToMaybe items    
