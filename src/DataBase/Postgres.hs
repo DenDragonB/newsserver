@@ -5,25 +5,25 @@ module DataBase.Postgres where
 
 import           Control.Monad.Except
 import           Control.Monad.Reader
-import qualified Data.ByteString.UTF8                 as BS
-import           Data.Maybe                           (listToMaybe)
+import qualified Data.ByteString.UTF8               as BS
+import           Data.Maybe                         (listToMaybe)
 import           Database.PostgreSQL.Simple
-import           Database.PostgreSQL.Simple.ToField   (ToField)
+import           Database.PostgreSQL.Simple.ToField (ToField)
 import           Database.PostgreSQL.Simple.Types
 import           Exceptions
 
 import           DataBase
-import DataBase.Types
+import           DataBase.Types
 import           Logger
 
-import Data.Time ( Day )
+import           Data.Time                          (Day)
 
 -- Names of tables in database
 data Tables = Authors | Categories | Drafts | News | Tags | Users
     deriving Show
 
 -- Names of columns in all tables of database
-data Fields = Id | UserId | About | CatName | Tag
+data Fields = Id | UserId | About | CatName | Tag | UserName | Token
     deriving Show
 
 type ItemId = Int
@@ -152,7 +152,7 @@ getCategoryWithParameters ::
     , Logger.HasLogger env
     , MonadError Exceptions.Errors m
     , MonadIO m
-    ) => Maybe ItemId -> Maybe ItemId -> Maybe String 
+    ) => Maybe ItemId -> Maybe ItemId -> Maybe String
     -> [( String , Maybe String )] -> m [Category]
 getCategoryWithParameters categoryId parentId name param = do
     queryWithExcept
@@ -265,7 +265,7 @@ updateDraftWithPrameters ::
     , Logger.HasLogger env
     , MonadError Exceptions.Errors m
     , MonadIO m
-    ) => ItemId -> Maybe String -> Maybe ItemId 
+    ) => ItemId -> Maybe String -> Maybe ItemId
     -> Maybe String -> Maybe String -> Maybe [String]
     -> m ()
 updateDraftWithPrameters draftId header categoryId content mainPhoto photos = do
@@ -338,12 +338,12 @@ selectNewsWithParameters::
     , Logger.HasLogger env
     , MonadError Exceptions.Errors m
     , MonadIO m
-    ) => Maybe ItemId -> Maybe Day -> Maybe Day -> Maybe Day -> Maybe String 
+    ) => Maybe ItemId -> Maybe Day -> Maybe Day -> Maybe Day -> Maybe String
     -> Maybe Int -> Maybe [Int] -> Maybe [Int] -> Maybe String -> Maybe String
     -> Maybe String -> BS.ByteString -> BS.ByteString
     -> m [Posts]
 selectNewsWithParameters newsId newsDay newsDayLT newsDayGT newsAuthor
-    newsTag newsTagALL newsTagIn newsHeader newsContent newsSearch 
+    newsTag newsTagALL newsTagIn newsHeader newsContent newsSearch
     sortBy limitOffset = do
     queryWithExcept
         (Query $ "WITH filters AS (SELECT"
@@ -413,7 +413,7 @@ insertTagWitnName name = do
     items <- queryWithExcept
         "INSERT INTO Tags (Tag) VALUES (?) RETURNING * ;"
         [name]
-    return $ listToMaybe items     
+    return $ listToMaybe items
 
 updateTagById ::
     ( MonadReader env m
@@ -426,7 +426,7 @@ updateTagById tagId name = do
     items <- queryWithExcept
         "UPDATE Tags SET Tag = ? WHERE Id = ? RETURNING * ;"
         (name , tagId)
-    return $ listToMaybe items    
+    return $ listToMaybe items
 
 selectTagsWithParameters ::
     ( MonadReader env m
@@ -434,13 +434,92 @@ selectTagsWithParameters ::
     , Logger.HasLogger env
     , MonadError Exceptions.Errors m
     , MonadIO m
-    ) => Maybe ItemId -> Maybe String -> [( String , Maybe String )] -> m (Maybe TagType)
+    ) => Maybe ItemId -> Maybe String -> [( String , Maybe String )] -> m [TagType]
 selectTagsWithParameters tagId name param = do
-    items <- queryWithExcept
+    queryWithExcept
         (Query $ "SELECT id,tag FROM Tags WHERE"
             <> "(id = COALESCE (?, id))"
             <> "AND (tag = COALESCE (?, tag))"
             <> "ORDER BY tag "
             <> getLimitOffsetBS param <> ";")
         (tagId, name)
-    return $ listToMaybe items    
+
+insertUserWithParameters ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => String -> Maybe String -> Maybe String -> Maybe String
+    -> String -> String -> m (Maybe User)
+insertUserWithParameters userName firstName lastName avatar userPass userToken = do
+    items <- queryWithExcept
+        (Query "INSERT INTO Users "
+        <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
+        <> "VALUES (?,?,?,?,md5(?),md5(?),NOW()) RETURNING * ;")
+        ( firstName
+        , lastName
+        , avatar
+        , userName
+        , userPass
+        , userToken )
+    return $ listToMaybe items
+
+selectAdmFromUsers ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => String -> m Bool
+selectAdmFromUsers userToken = do
+    items <- queryWithExcept
+        "SELECT Adm FROM Users WHERE token = ? ;"
+        [userToken]
+    return $ maybe False fromOnly $ listToMaybe items
+
+selectUserWithParameters ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => Maybe String -> Maybe String -> Maybe String
+    -> [( String , Maybe String )] -> m [UserToGet]
+selectUserWithParameters userName firstName lastName param = do
+    queryWithExcept
+        (Query $ "SELECT id,FirstName,LastName,Avatar,UserName,RegDate FROM Users WHERE"
+            <> "(UserName = COALESCE (?,UserName))"
+            <> "AND (FirstName = COALESCE (?,FirstName))"
+            <> "AND (LastName = COALESCE (?,LastName))"
+            <> "ORDER BY UserName "
+            <> getLimitOffsetBS param <> ";")
+        ( userName
+        , firstName
+        , lastName)
+
+checkPassCorrect ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => String -> String -> m Bool
+checkPassCorrect userName userPass = do
+    isExist <- queryWithExcept
+        "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));"
+        (userName,userPass)
+    return (maybe False fromOnly $ listToMaybe isExist)
+
+changePassToUser ::
+    ( MonadReader env m
+    , HasDataBase env
+    , Logger.HasLogger env
+    , MonadError Exceptions.Errors m
+    , MonadIO m
+    ) => String -> String -> String -> m (Maybe User)
+changePassToUser userName userPass userToken= do
+    items <- queryWithExcept
+        "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? RETURNING * ;"
+        ( userPass , userToken , userName )
+    return $ listToMaybe items

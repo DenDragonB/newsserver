@@ -21,34 +21,10 @@ import           GHC.Generics
 
 import           DataBase
 import           DataBase.Postgres
+import           DataBase.Types
 import           Exceptions
 import           Logger
 import           Prelude                          hiding (id)
-
-data User = User
-    { id         :: Int
-    , first_name :: String
-    , last_name  :: String
-    , avatar     :: String
-    , name       :: String
-    , upass      :: Maybe String
-    , reg_date   :: Day
-    , adm        :: Maybe Bool
-    , token      :: Maybe String
-    } deriving (Show,Eq,Generic)
-instance A.ToJSON User
-instance FromRow User
-
-data UserToGet = UserToGet
-    { id         :: Int
-    , first_name :: String
-    , last_name  :: String
-    , avatar     :: String
-    , name       :: String
-    , reg_date   :: Day
-    } deriving (Show,Eq,Generic)
-instance A.ToJSON UserToGet
-instance FromRow UserToGet
 
 makeHash :: BS.ByteString -> BS.ByteString
 makeHash bs = fromMaybe "" $ hashPassword bs $
@@ -67,6 +43,9 @@ userAdd param = do
     userName <- getParamM "name" param
     when (null userName) (throwError $ WrongQueryParameter "name")
 
+    oldUser <- existItemByField Users UserName userName
+    when oldUser (throwError ObjectExists)
+
     userPass <- getParamM "pass" param
     when (null userPass) (throwError $ WrongQueryParameter "pass")
 
@@ -74,25 +53,12 @@ userAdd param = do
     let mLastName = getMaybeParam "last_name" param
     let mAvatar = getMaybeParam "avatar" param
 
-    oldUser <- existItemByField "Users" "UserName" userName
-    when oldUser (throwError ObjectExists)
+    u <- insertUserWithParameters userName mFirstName mLastName mAvatar
+        userPass ((BS.toString . makeHash . BS.fromString) (userName <> userPass))
 
-    _ <- execWithExcept
-        (Query "INSERT INTO Users "
-        <> "(FirstName, LastName, Avatar, UserName, Pass, Token, RegDate)"
-        <> "VALUES (?,?,?,?,md5(?),md5(?),NOW());")
-        ( mFirstName
-        , mLastName
-        , mAvatar
-        , userName
-        , userPass
-        , (BS.toString . makeHash . BS.fromString) (userName <> userPass))
-    u <- queryWithExcept
-        (Query "SELECT * FROM Users WHERE UserName = ? AND FirstName = ? AND LastName = ?;")
-        (userName, mFirstName, mLastName)
     logConfig <- asks Logger.lConfig
     liftIO $ Logger.info logConfig $ "Add user: " <> show u
-    return $ A.toJSON $ listToMaybe (u :: [User])
+    return $ A.toJSON u
 
 
 findToken ::
@@ -111,13 +77,9 @@ findToken param = do
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.debug logConfig $
                         "Request from user with token: " <> queryToken
-            userExist <- existItemByField "Users" "token" queryToken
-            admExist <- queryWithExcept
-                    (Query "SELECT Adm FROM Users WHERE token = ? ;")
-                    [queryToken]
-            case admExist of
-                [] -> return $ Just ( userExist , False)
-                _  -> return $ Just ( userExist , maybe False fromOnly $ listToMaybe admExist)
+            userExist <- existItemByField Users Token queryToken
+            admExist <- selectAdmFromUsers queryToken
+            return $ Just ( userExist , admExist)
 
 userGet ::
     ( MonadReader env m
@@ -135,17 +97,8 @@ userGet param = do
             let mFirstName = getMaybeParam "first_name" param
             let mLastName = getMaybeParam "last_name" param
             let mUserName = getMaybeParam "name" param
-            u <- queryWithExcept
-                (Query $ "SELECT id,FirstName,LastName,Avatar,UserName,RegDate FROM Users WHERE"
-                    <> "(UserName = COALESCE (?,UserName))"
-                    <> "AND (FirstName = COALESCE (?,FirstName))"
-                    <> "AND (LastName = COALESCE (?,LastName))"
-                    <> "ORDER BY UserName "
-                    <> getLimitOffsetBS param <> ";")
-                ( mUserName
-                , mFirstName
-                , mLastName)
-            return $ A.toJSON (u :: [UserToGet])
+            u <- selectUserWithParameters mUserName mFirstName mLastName param
+            return $ A.toJSON u
 
 userDel ::
     ( MonadReader env m
@@ -160,9 +113,7 @@ userDel param = do
     case admin of
         Just (_,True ) -> do
             uid <- parseParamM "id" param
-            _ <- execWithExcept
-                (Query "DELETE FROM Users WHERE id = ? ;")
-                [uid :: Int]
+            deleteItemFromTableById Users uid
             logConfig <- asks Logger.lConfig
             liftIO $ Logger.info logConfig $
                 "Delete user id: " <> show uid
@@ -190,22 +141,16 @@ userNewPass param = do
     uNewPass <- mNewPass & fromMaybeM NotFound
     when (null uNewPass) (throwError $ WrongQueryParameter "new_pass")
 
-    isUser <- existItemByField "Users" "UserName" uName
+    isUser <- existItemByField Users UserName uName
     unless isUser (throwError UserNOTExists)
 
-    isPass <- queryWithExcept
-        (Query "SELECT EXISTS (SELECT id FROM Users WHERE UserName = ? AND Pass = md5(?));")
-        (uName,uPass)
-    unless (maybe False fromOnly $ listToMaybe isPass) (throwError WrongPass)
+    isPass <- checkPassCorrect uName uPass
+    unless isPass (throwError WrongPass)
 
-    _ <- execWithExcept
-        (Query "UPDATE Users SET Pass = md5(?), Token = md5(?) WHERE UserName = ? ;")
-        ( uNewPass
-        , (BS.toString . makeHash . BS.fromString) (uName <> uNewPass)
-        , uName)
-    u <- selectMaybeItemByField "Users" "UserName" uName
+    u <- changePassToUser uName uNewPass
+        ((BS.toString . makeHash . BS.fromString) (uName <> uNewPass))
     logConfig <- asks Logger.lConfig
     liftIO $ Logger.info logConfig $
         "Change password for user: " <> uName
-    return $ A.toJSON (u :: Maybe User)
+    return $ A.toJSON u
 

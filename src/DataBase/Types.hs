@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module DataBase.Types where
 
@@ -10,7 +11,7 @@ import           Database.PostgreSQL.Simple.Types   (PGArray)
 import           GHC.Generics                       (Generic)
 
 data Author = Author
-    { author_id :: Int
+    { id :: Int
     , user_id   :: Int
     , about     :: Text
     } deriving (Show,Eq,Generic)
@@ -18,8 +19,8 @@ instance A.ToJSON Author
 instance FromRow Author
 
 data Category = Category
-    { category_id   :: Int
-    , category_name :: Text
+    { id   :: Int
+    , name :: Text
     , parent_id     :: Int
     } deriving (Show,Eq,Generic)
 instance A.ToJSON Category
@@ -53,8 +54,33 @@ data Posts = Posts
 instance FromRow Posts
 
 data TagType = TagType
-    { tag_id   :: Int
-    , tag_name :: Text
+    { id   :: Int
+    , name :: Text
     } deriving (Show,Eq,Generic)
 instance A.ToJSON TagType
 instance FromRow TagType
+
+data User = User
+    { id    :: Int
+    , first_name :: String
+    , last_name  :: String
+    , avatar     :: String
+    , username   :: String
+    , upass      :: Maybe String
+    , reg_date   :: Day
+    , adm        :: Maybe Bool
+    , token      :: Maybe String
+    } deriving (Show,Eq,Generic)
+instance A.ToJSON User
+instance FromRow User
+
+data UserToGet = UserToGet
+    { id    :: Int
+    , first_name :: String
+    , last_name  :: String
+    , avatar     :: String
+    , username   :: String
+    , reg_date   :: Day
+    } deriving (Show,Eq,Generic)
+instance A.ToJSON UserToGet
+instance FromRow UserToGet
